@@ -18,17 +18,17 @@ interface Currency {
 
 const CURRENCIES: Currency[] = [
     { code: "USD", symbol: "$", label: "USD ($)", rate: 1 },
-    { code: "GBP", symbol: "£", label: "GBP (£)", rate: 0.79 },
-    { code: "INR", symbol: "₹", label: "INR (₹)", rate: 83.5 },
-    { code: "EUR", symbol: "€", label: "EUR (€)", rate: 0.92 },
-    { code: "AUD", symbol: "A$", label: "AUD (A$)", rate: 1.53 },
-    { code: "CAD", symbol: "C$", label: "CAD (C$)", rate: 1.36 },
+    { code: "GBP", symbol: "£", label: "GBP (£)", rate: 0.74 },
+    { code: "INR", symbol: "₹", label: "INR (₹)", rate: 90 },
+    { code: "EUR", symbol: "€", label: "EUR (€)", rate: 0.85 },
+    { code: "AUD", symbol: "A$", label: "AUD (A$)", rate: 1.4 },
+    { code: "CAD", symbol: "C$", label: "CAD (C$)", rate: 1.37 },
 ];
 
 const PRICES_USD = {
     onlineSession: 1.8,
     offlineSession: 0.8,
-    onlineSeat: 40,
+    onlineSeat: 45,
     offlineSeat: 25,
     studentOnline: 5,
     studentOffline: 2,
@@ -296,7 +296,7 @@ const PricingCalculator = () => {
                 <Alert className="bg-muted/50 border-border/60">
                     <Info className="h-4 w-4 text-muted-foreground" />
                     <AlertDescription className="text-xs text-muted-foreground">
-                        These prices are indicative and for estimation purposes only. Actual prices may vary based on your specific requirements, usage patterns, and negotiated terms. Please <a href="https://www.wise.live" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">contact us</a> for a detailed quote.
+                        These prices are indicative and for estimation purposes only. Actual prices may vary based on your specific requirements, usage patterns, and negotiated terms. Please <a href="https://www.wise.live/contact/" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">contact us</a> for a detailed quote.
                     </AlertDescription>
                 </Alert>
                 {/* Volume Discount Banner */}
@@ -311,7 +311,7 @@ const PricingCalculator = () => {
                                 <p className="text-sm text-muted-foreground">Based on your usage, you qualify for special volume-based pricing. Talk to our team to get a customized quote.</p>
                             </div>
                             <Button asChild className="px-8 shrink-0">
-                                <a href="https://www.wise.live/contact/" target="_blank" rel="noopener noreferrer">
+                                <a href="https://cal.com/bilal.abidi/wise-discounts" target="_blank" rel="noopener noreferrer">
                                     Talk to us
                                 </a>
                             </Button>
