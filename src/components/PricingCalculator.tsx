@@ -152,11 +152,11 @@ const PricingCalculator = () => {
     };
 
     const pricing = useMemo(() => {
-        const totalOnlineSessions = sessions1on1Online + groupSessionsOnline;
-        const totalInPersonSessions = sessions1on1InPerson + groupSessionsInPerson;
+        const totalOnlineParticipantSessions = sessions1on1Online + groupSessionsOnline * studentsPerGroupOnline;
+        const totalInPersonParticipantSessions = sessions1on1InPerson + groupSessionsInPerson * studentsPerGroupInPerson;
         const perSession =
-            totalOnlineSessions * PRICES_USD.onlineSession +
-            totalInPersonSessions * PRICES_USD.offlineSession;
+            totalOnlineParticipantSessions * PRICES_USD.onlineSession +
+            totalInPersonParticipantSessions * PRICES_USD.offlineSession;
         const perSeat =
             (tutoringStaffOnline + nonTutoringStaffOnline) * PRICES_USD.onlineSeat +
             (tutoringStaffInPerson + nonTutoringStaffInPerson) * PRICES_USD.offlineSeat;
@@ -167,6 +167,7 @@ const PricingCalculator = () => {
     }, [
         sessions1on1Online, sessions1on1InPerson,
         groupSessionsOnline, groupSessionsInPerson,
+        studentsPerGroupOnline, studentsPerGroupInPerson,
         tutoringStaffOnline, tutoringStaffInPerson,
         nonTutoringStaffOnline, nonTutoringStaffInPerson,
         activeStudentsOnline, activeStudentsInPerson,
