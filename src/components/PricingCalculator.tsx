@@ -1,5 +1,8 @@
 import { useState, useMemo, useEffect } from "react";
-import { Calculator, DollarSign, Users, Monitor, Building2, Info, Globe, Sparkles } from "lucide-react";
+import {
+    Calculator, DollarSign, Monitor, Building2, Info,
+    Globe, Sparkles, UserCog, GraduationCap, RotateCcw,
+} from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -13,7 +16,7 @@ interface Currency {
     code: string;
     symbol: string;
     label: string;
-    rate: number; // relative to USD
+    rate: number;
 }
 
 const CURRENCIES: Currency[] = [
@@ -34,6 +37,98 @@ const PRICES_USD = {
     studentOffline: 2,
 };
 
+type InputState = {
+    sessions1on1Online: number;
+    sessions1on1InPerson: number;
+    groupSessionsOnline: number;
+    groupSessionsInPerson: number;
+    studentsPerGroupOnline: number;
+    studentsPerGroupInPerson: number;
+    tutoringStaffOnline: number;
+    tutoringStaffInPerson: number;
+    nonTutoringStaffOnline: number;
+    nonTutoringStaffInPerson: number;
+    activeStudentsOnline: number;
+    activeStudentsInPerson: number;
+};
+
+const EMPTY_STATE: InputState = {
+    sessions1on1Online: 0, sessions1on1InPerson: 0,
+    groupSessionsOnline: 0, groupSessionsInPerson: 0,
+    studentsPerGroupOnline: 0, studentsPerGroupInPerson: 0,
+    tutoringStaffOnline: 0, tutoringStaffInPerson: 0,
+    nonTutoringStaffOnline: 0, nonTutoringStaffInPerson: 0,
+    activeStudentsOnline: 0, activeStudentsInPerson: 0,
+};
+
+const PRESETS: Array<{ key: string; label: string; description: string; values: InputState }> = [
+    {
+        key: "online-only",
+        label: "Online Only",
+        description: "Mid-size org, fully online delivery",
+        values: {
+            sessions1on1Online: 100, sessions1on1InPerson: 0,
+            groupSessionsOnline: 30, groupSessionsInPerson: 0,
+            studentsPerGroupOnline: 3, studentsPerGroupInPerson: 0,
+            tutoringStaffOnline: 5, tutoringStaffInPerson: 0,
+            nonTutoringStaffOnline: 1, nonTutoringStaffInPerson: 0,
+            activeStudentsOnline: 75, activeStudentsInPerson: 0,
+        },
+    },
+    {
+        key: "hybrid",
+        label: "Hybrid",
+        description: "Mid-size org, online and in-person",
+        values: {
+            sessions1on1Online: 100, sessions1on1InPerson: 50,
+            groupSessionsOnline: 30, groupSessionsInPerson: 20,
+            studentsPerGroupOnline: 2, studentsPerGroupInPerson: 2,
+            tutoringStaffOnline: 5, tutoringStaffInPerson: 3,
+            nonTutoringStaffOnline: 1, nonTutoringStaffInPerson: 1,
+            activeStudentsOnline: 75, activeStudentsInPerson: 25,
+        },
+    },
+    {
+        key: "inperson-only",
+        label: "In-person Only",
+        description: "Mid-size org, fully in-person delivery",
+        values: {
+            sessions1on1Online: 0, sessions1on1InPerson: 100,
+            groupSessionsOnline: 0, groupSessionsInPerson: 30,
+            studentsPerGroupOnline: 0, studentsPerGroupInPerson: 3,
+            tutoringStaffOnline: 0, tutoringStaffInPerson: 5,
+            nonTutoringStaffOnline: 0, nonTutoringStaffInPerson: 1,
+            activeStudentsOnline: 0, activeStudentsInPerson: 90,
+        },
+    },
+    {
+        key: "online-1on1",
+        label: "Online 1:1",
+        description: "Mid-size org, online 1:1 sessions only",
+        values: {
+            sessions1on1Online: 100, sessions1on1InPerson: 0,
+            groupSessionsOnline: 0, groupSessionsInPerson: 0,
+            studentsPerGroupOnline: 0, studentsPerGroupInPerson: 0,
+            tutoringStaffOnline: 4, tutoringStaffInPerson: 0,
+            nonTutoringStaffOnline: 1, nonTutoringStaffInPerson: 0,
+            activeStudentsOnline: 40, activeStudentsInPerson: 0,
+        },
+    },
+    {
+        key: "online-group",
+        label: "Online Groups",
+        description: "Mid-size org, online group sessions only",
+        values: {
+            sessions1on1Online: 0, sessions1on1InPerson: 0,
+            groupSessionsOnline: 50, groupSessionsInPerson: 0,
+            studentsPerGroupOnline: 3, studentsPerGroupInPerson: 0,
+            tutoringStaffOnline: 3, tutoringStaffInPerson: 0,
+            nonTutoringStaffOnline: 1, nonTutoringStaffInPerson: 0,
+            activeStudentsOnline: 60, activeStudentsInPerson: 0,
+        },
+    },
+];
+
 function detectCurrency(): string {
     try {
         const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
@@ -47,15 +142,37 @@ function detectCurrency(): string {
     return "USD";
 }
 
+const SectionHeader = ({ label, tag }: { label: string; tag: string }) => (
+    <div className="flex items-center gap-3 pt-5 pb-1">
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap">{label}</span>
+        <div className="flex-1 border-t border-border/40" />
+        <Badge className="text-[10px] px-2 py-0 h-5 bg-primary/10 text-primary border-0 font-medium whitespace-nowrap">
+            {tag}
+        </Badge>
+    </div>
+);
+
+const Tooltip = ({ children, content }: { children: React.ReactNode; content: string }) => (
+    <div className="relative group inline-flex items-center">
+        {children}
+        <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-56 bg-popover border border-border rounded-lg p-2.5 text-xs text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20 shadow-lg leading-relaxed">
+            {content}
+            <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-border" />
+        </div>
+    </div>
+);
+
 interface InputRowProps {
     label: string;
     online: number;
     inPerson: number;
     onOnlineChange: (v: number) => void;
     onInPersonChange: (v: number) => void;
+    tooltip?: string;
+    indented?: boolean;
 }
 
-const InputRow = ({ label, online, inPerson, onOnlineChange, onInPersonChange }: InputRowProps) => {
+const InputRow = ({ label, online, inPerson, onOnlineChange, onInPersonChange, tooltip, indented }: InputRowProps) => {
     const handleChange = (setter: (v: number) => void) => (e: React.ChangeEvent<HTMLInputElement>) => {
         const raw = e.target.value;
         if (raw === "") { setter(0); return; }
@@ -63,8 +180,16 @@ const InputRow = ({ label, online, inPerson, onOnlineChange, onInPersonChange }:
     };
 
     return (
-        <div className="grid grid-cols-[1fr_110px_110px] sm:grid-cols-[1fr_120px_120px] gap-3 items-center py-3 border-b border-border/40 last:border-0">
-            <Label className="text-sm text-foreground font-normal">{label}</Label>
+        <div className={`grid grid-cols-[1fr_110px_110px] sm:grid-cols-[1fr_120px_120px] gap-3 items-center py-2.5 border-b border-border/40 last:border-0 ${indented ? "pl-3" : ""}`}>
+            <div className="flex items-center gap-1.5 min-w-0">
+                {indented && <span className="text-muted-foreground/60 text-xs select-none shrink-0">↳</span>}
+                <Label className="text-sm text-foreground font-normal truncate">{label}</Label>
+                {tooltip && (
+                    <Tooltip content={tooltip}>
+                        <Info className="w-3.5 h-3.5 text-muted-foreground/60 cursor-help shrink-0" />
+                    </Tooltip>
+                )}
+            </div>
             <Input
                 type="number"
                 min={0}
@@ -88,106 +213,172 @@ const InputRow = ({ label, online, inPerson, onOnlineChange, onInPersonChange }:
 interface PlanCardProps {
     title: string;
     price: string;
+    rawPrice: number;
     icon: React.ReactNode;
     description: string;
-    highlighted?: boolean;
+    formula: string;
+    highlighted: boolean;
+    hasInputs: boolean;
 }
 
-const PlanCard = ({ title, price, icon, description, highlighted }: PlanCardProps) => (
+const PlanCard = ({ title, price, rawPrice, icon, description, formula, highlighted, hasInputs }: PlanCardProps) => (
     <Card
         className={`relative transition-all duration-300 ${highlighted
-            ? "bg-primary/10 border-2 border-primary shadow-[var(--shadow-glow)]"
-            : "bg-card border-border hover:border-primary/30"
+            ? "bg-primary/10 border-2 border-primary purple-glow"
+            : hasInputs && rawPrice === 0
+                ? "bg-card border-border/40 opacity-50"
+                : "bg-card border-border hover:border-primary/30"
             }`}
     >
         {highlighted && (
-            <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground text-xs">
-                Popular
+            <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground text-xs px-3">
+                Best Value
             </Badge>
         )}
         <CardContent className="p-6">
             <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 rounded-lg bg-primary/10 text-primary">{icon}</div>
+                <div className={`p-2 rounded-lg text-primary ${highlighted ? "bg-primary/20" : "bg-primary/10"}`}>
+                    {icon}
+                </div>
                 <h3 className="font-semibold text-foreground">{title}</h3>
             </div>
             <div className="mb-2">
-                <span className="text-3xl font-bold text-foreground">{price}</span>
-                <span className="text-muted-foreground text-sm ml-1">/ month</span>
+                {hasInputs ? (
+                    <span className="text-3xl font-bold text-foreground">{price}</span>
+                ) : (
+                    <span className="text-3xl font-bold text-muted-foreground/40">—</span>
+                )}
+                {hasInputs && <span className="text-muted-foreground text-sm ml-1">/ month</span>}
             </div>
             <p className="text-xs text-muted-foreground">{description}</p>
+            {hasInputs && rawPrice > 0 && formula && (
+                <div className="mt-3 pt-3 border-t border-border/40">
+                    <p className="text-[11px] text-muted-foreground/60 font-mono leading-relaxed">{formula}</p>
+                </div>
+            )}
+            {hasInputs && rawPrice === 0 && (
+                <p className="mt-3 text-[11px] text-muted-foreground/50 italic">No relevant inputs entered</p>
+            )}
         </CardContent>
     </Card>
 );
 
 const PricingCalculator = () => {
     const [currencyCode, setCurrencyCode] = useState("USD");
-    const [sessions1on1Online, setSessions1on1Online] = useState(0);
-    const [sessions1on1InPerson, setSessions1on1InPerson] = useState(0);
-    const [groupSessionsOnline, setGroupSessionsOnline] = useState(0);
-    const [groupSessionsInPerson, setGroupSessionsInPerson] = useState(0);
-    const [studentsPerGroupOnline, setStudentsPerGroupOnline] = useState(0);
-    const [studentsPerGroupInPerson, setStudentsPerGroupInPerson] = useState(0);
-    const [tutoringStaffOnline, setTutoringStaffOnline] = useState(0);
-    const [tutoringStaffInPerson, setTutoringStaffInPerson] = useState(0);
-    const [nonTutoringStaffOnline, setNonTutoringStaffOnline] = useState(0);
-    const [nonTutoringStaffInPerson, setNonTutoringStaffInPerson] = useState(0);
-    const [activeStudentsOnline, setActiveStudentsOnline] = useState(0);
-    const [activeStudentsInPerson, setActiveStudentsInPerson] = useState(0);
-
+    const [inputs, setInputs] = useState<InputState>(EMPTY_STATE);
 
     useEffect(() => {
         setCurrencyCode(detectCurrency());
     }, []);
 
-    const currency = CURRENCIES.find((c) => c.code === currencyCode) || CURRENCIES[0];
+    const set = (key: keyof InputState) => (v: number) =>
+        setInputs(prev => ({ ...prev, [key]: v }));
 
-    const formatPrice = (usdAmount: number) => {
-        const converted = usdAmount * currency.rate;
-        return `${currency.symbol}${converted.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
-    };
+    const currency = CURRENCIES.find((c) => c.code === currencyCode) ?? CURRENCIES[0];
 
-    const formatUnitPrice = (usdAmount: number) => {
+    const fmt = (usdAmount: number, decimals = 2) => {
         const converted = usdAmount * currency.rate;
-        return `${currency.symbol}${converted.toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}`;
+        return `${currency.symbol}${converted.toLocaleString("en-US", {
+            minimumFractionDigits: decimals,
+            maximumFractionDigits: decimals,
+        })}`;
     };
+    const formatPrice = (usdAmount: number) => fmt(usdAmount, 0);
+
+    const hasAnyInput = Object.values(inputs).some(v => v > 0);
 
     const pricing = useMemo(() => {
-        const totalOnlineParticipantSessions = sessions1on1Online + groupSessionsOnline * studentsPerGroupOnline;
-        const totalInPersonParticipantSessions = sessions1on1InPerson + groupSessionsInPerson * studentsPerGroupInPerson;
+        const totalOnlineParticipantSessions =
+            inputs.sessions1on1Online + inputs.groupSessionsOnline * inputs.studentsPerGroupOnline;
+        const totalInPersonParticipantSessions =
+            inputs.sessions1on1InPerson + inputs.groupSessionsInPerson * inputs.studentsPerGroupInPerson;
         const perSession =
             totalOnlineParticipantSessions * PRICES_USD.onlineSession +
             totalInPersonParticipantSessions * PRICES_USD.offlineSession;
+
+        const totalStaffOnline = inputs.tutoringStaffOnline + inputs.nonTutoringStaffOnline;
+        const totalStaffInPerson = inputs.tutoringStaffInPerson + inputs.nonTutoringStaffInPerson;
         const perSeat =
-            (tutoringStaffOnline + nonTutoringStaffOnline) * PRICES_USD.onlineSeat +
-            (tutoringStaffInPerson + nonTutoringStaffInPerson) * PRICES_USD.offlineSeat;
+            totalStaffOnline * PRICES_USD.onlineSeat +
+            totalStaffInPerson * PRICES_USD.offlineSeat;
+
         const perStudent =
-            activeStudentsOnline * PRICES_USD.studentOnline +
-            activeStudentsInPerson * PRICES_USD.studentOffline;
-        return { perSession, perSeat, perStudent };
-    }, [
-        sessions1on1Online, sessions1on1InPerson,
-        groupSessionsOnline, groupSessionsInPerson,
-        studentsPerGroupOnline, studentsPerGroupInPerson,
-        tutoringStaffOnline, tutoringStaffInPerson,
-        nonTutoringStaffOnline, nonTutoringStaffInPerson,
-        activeStudentsOnline, activeStudentsInPerson,
-    ]);
+            inputs.activeStudentsOnline * PRICES_USD.studentOnline +
+            inputs.activeStudentsInPerson * PRICES_USD.studentOffline;
+
+        return {
+            perSession, perSeat, perStudent,
+            totalOnlineParticipantSessions, totalInPersonParticipantSessions,
+            totalStaffOnline, totalStaffInPerson,
+        };
+    }, [inputs]);
 
     const plans = useMemo(() => {
-        const all = [
-            { key: "session", title: "Per Session", price: pricing.perSession, icon: <DollarSign className="w-5 h-5" />, description: "Pay based on the total number of sessions conducted each month." },
-            { key: "seat", title: "Per Seat", price: pricing.perSeat, icon: <Users className="w-5 h-5" />, description: "Pay based on the number of staff seats (tutoring + non-tutoring)." },
-            { key: "student", title: "Per Student", price: pricing.perStudent, icon: <Users className="w-5 h-5" />, description: "Pay based on the total number of active students enrolled." },
-        ].filter(p => p.price > 0);
-        const minPrice = Math.min(...all.map(p => p.price));
-        return all.map(p => ({ ...p, highlighted: p.price === minPrice }));
-    }, [pricing]);
+        const fmtLocal = (usd: number) => {
+            const cur = CURRENCIES.find(c => c.code === currencyCode) ?? CURRENCIES[0];
+            const converted = usd * cur.rate;
+            return `${cur.symbol}${converted.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        };
 
-    const bestPlanUSD = plans.length > 0 ? Math.min(...plans.map(p => p.price)) : 0;
+        const buildFormula = (parts: Array<{ count: number; label: string; unitUsd: number }>) => {
+            const nonZero = parts.filter(p => p.count > 0);
+            if (!nonZero.length) return "";
+            return nonZero.map(p => `${p.count.toLocaleString()} ${p.label} × ${fmtLocal(p.unitUsd)}`).join("  +  ");
+        };
+
+        const allPlans = [
+            {
+                key: "session",
+                title: "Per Session",
+                price: pricing.perSession,
+                icon: <DollarSign className="w-5 h-5" />,
+                description: "Pay per participant-session each month. Ideal when session volume drives your costs.",
+                formula: buildFormula([
+                    { count: pricing.totalOnlineParticipantSessions, label: "online", unitUsd: PRICES_USD.onlineSession },
+                    { count: pricing.totalInPersonParticipantSessions, label: "in-person", unitUsd: PRICES_USD.offlineSession },
+                ]),
+            },
+            {
+                key: "seat",
+                title: "Per Seat",
+                price: pricing.perSeat,
+                icon: <UserCog className="w-5 h-5" />,
+                description: "Pay per staff seat each month. Best when team size is stable and predictable.",
+                formula: buildFormula([
+                    { count: pricing.totalStaffOnline, label: "online staff", unitUsd: PRICES_USD.onlineSeat },
+                    { count: pricing.totalStaffInPerson, label: "in-person staff", unitUsd: PRICES_USD.offlineSeat },
+                ]),
+            },
+            {
+                key: "student",
+                title: "Per Student",
+                price: pricing.perStudent,
+                icon: <GraduationCap className="w-5 h-5" />,
+                description: "Pay per active enrolled student each month. Natural fit for student-centric operations.",
+                formula: buildFormula([
+                    { count: inputs.activeStudentsOnline, label: "online", unitUsd: PRICES_USD.studentOnline },
+                    { count: inputs.activeStudentsInPerson, label: "in-person", unitUsd: PRICES_USD.studentOffline },
+                ]),
+            },
+        ];
+
+        const nonZeroPrices = allPlans.filter(p => p.price > 0).map(p => p.price);
+        const minPrice = nonZeroPrices.length > 0 ? Math.min(...nonZeroPrices) : -1;
+        return allPlans.map(p => ({ ...p, highlighted: p.price > 0 && p.price === minPrice }));
+    }, [pricing, currencyCode, inputs.activeStudentsOnline, inputs.activeStudentsInPerson]);
+
+    const nonZeroPlanPrices = plans.filter(p => p.price > 0).map(p => p.price);
+    const bestPlanUSD = nonZeroPlanPrices.length > 0 ? Math.min(...nonZeroPlanPrices) : 0;
+
+    const VOLUME_THRESHOLD = 500;
+    const showVolumeHint = bestPlanUSD > 150 && bestPlanUSD <= VOLUME_THRESHOLD;
+    const showVolumeDiscount = bestPlanUSD > VOLUME_THRESHOLD;
+    const volumeProgress = Math.min((bestPlanUSD / VOLUME_THRESHOLD) * 100, 100);
 
     return (
         <div className="min-h-screen bg-background py-12 px-4">
             <div className="max-w-5xl mx-auto">
+
                 {/* Header */}
                 <div className="text-center mb-10">
                     <Badge variant="secondary" className="mb-4 bg-primary/10 text-primary border-0 gap-1.5 px-3 py-1">
@@ -198,23 +389,48 @@ const PricingCalculator = () => {
                         Find the Right Plan for Your Business
                     </h1>
                     <p className="text-muted-foreground max-w-xl mx-auto text-sm">
-                        Enter your tutoring business details below to see estimated costs across our flexible billing options.
+                        Enter your tutoring business details below to compare estimated monthly costs across our three flexible billing models.
                     </p>
                 </div>
 
-                {/* Currency Selector */}
-                <div className="flex justify-end mb-6">
-                    <div className="flex items-center gap-2">
+                {/* Presets + Currency bar */}
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-6">
+                    <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs text-muted-foreground shrink-0">Try a preset:</span>
+                        {PRESETS.map(preset => (
+                            <Button
+                                key={preset.key}
+                                variant="outline"
+                                size="sm"
+                                className="h-8 text-xs border-border/60 hover:border-primary/50 hover:text-primary"
+                                onClick={() => setInputs(preset.values)}
+                                title={preset.description}
+                            >
+                                {preset.label}
+                            </Button>
+                        ))}
+                        {hasAnyInput && (
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 text-xs text-muted-foreground hover:text-foreground"
+                                onClick={() => setInputs(EMPTY_STATE)}
+                            >
+                                <RotateCcw className="w-3 h-3 mr-1" />
+                                Reset
+                            </Button>
+                        )}
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
                         <Globe className="w-4 h-4 text-muted-foreground" />
+                        <span className="text-xs text-muted-foreground">Prices in:</span>
                         <Select value={currencyCode} onValueChange={setCurrencyCode}>
-                            <SelectTrigger className="w-[140px] h-9 bg-card border-border text-sm">
+                            <SelectTrigger className="w-[130px] h-8 bg-card border-border text-sm">
                                 <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
                                 {CURRENCIES.map((c) => (
-                                    <SelectItem key={c.code} value={c.code}>
-                                        {c.label}
-                                    </SelectItem>
+                                    <SelectItem key={c.code} value={c.code}>{c.label}</SelectItem>
                                 ))}
                             </SelectContent>
                         </Select>
@@ -226,12 +442,12 @@ const PricingCalculator = () => {
                     <Card className="bg-card border-border">
                         <CardContent className="p-6">
                             <h2 className="text-lg font-semibold text-foreground mb-1">Your Business Details</h2>
-                            <p className="text-xs text-muted-foreground mb-5">Adjust the numbers to match your setup</p>
+                            <p className="text-xs text-muted-foreground mb-4">Adjust the numbers to match your typical monthly setup</p>
 
                             {/* Column Headers */}
                             <div className="grid grid-cols-[1fr_110px_110px] sm:grid-cols-[1fr_120px_120px] gap-3 mb-1">
                                 <span />
-                                <div className="flex items-center justify-center gap-1.5 text-sm font-semibold text-primary">
+                                <div className="flex items-center justify-center gap-1.5 text-sm font-semibold text-foreground">
                                     <Monitor className="w-4 h-4" /> Online
                                 </div>
                                 <div className="flex items-center justify-center gap-1.5 text-sm font-semibold text-foreground">
@@ -239,12 +455,60 @@ const PricingCalculator = () => {
                                 </div>
                             </div>
 
-                            <InputRow label="Number of 1:1 sessions" online={sessions1on1Online} inPerson={sessions1on1InPerson} onOnlineChange={setSessions1on1Online} onInPersonChange={setSessions1on1InPerson} />
-                            <InputRow label="Number of group sessions" online={groupSessionsOnline} inPerson={groupSessionsInPerson} onOnlineChange={setGroupSessionsOnline} onInPersonChange={setGroupSessionsInPerson} />
-                            <InputRow label="Students per group session" online={studentsPerGroupOnline} inPerson={studentsPerGroupInPerson} onOnlineChange={setStudentsPerGroupOnline} onInPersonChange={setStudentsPerGroupInPerson} />
-                            <InputRow label="Total tutoring staff" online={tutoringStaffOnline} inPerson={tutoringStaffInPerson} onOnlineChange={setTutoringStaffOnline} onInPersonChange={setTutoringStaffInPerson} />
-                            <InputRow label="Total non-tutoring staff" online={nonTutoringStaffOnline} inPerson={nonTutoringStaffInPerson} onOnlineChange={setNonTutoringStaffOnline} onInPersonChange={setNonTutoringStaffInPerson} />
-                            <InputRow label="Total active students" online={activeStudentsOnline} inPerson={activeStudentsInPerson} onOnlineChange={setActiveStudentsOnline} onInPersonChange={setActiveStudentsInPerson} />
+                            {/* Sessions */}
+                            <SectionHeader label="Sessions" tag="Per Session pricing" />
+                            <InputRow
+                                label="1:1 sessions"
+                                online={inputs.sessions1on1Online}
+                                inPerson={inputs.sessions1on1InPerson}
+                                onOnlineChange={set("sessions1on1Online")}
+                                onInPersonChange={set("sessions1on1InPerson")}
+                            />
+                            <InputRow
+                                label="Group sessions"
+                                online={inputs.groupSessionsOnline}
+                                inPerson={inputs.groupSessionsInPerson}
+                                onOnlineChange={set("groupSessionsOnline")}
+                                onInPersonChange={set("groupSessionsInPerson")}
+                            />
+                            <InputRow
+                                label="Students per group"
+                                online={inputs.studentsPerGroupOnline}
+                                inPerson={inputs.studentsPerGroupInPerson}
+                                onOnlineChange={set("studentsPerGroupOnline")}
+                                onInPersonChange={set("studentsPerGroupInPerson")}
+                                indented
+                                tooltip="The number of students in each group session. Multiplied by group sessions to get total participant-sessions."
+                            />
+
+                            {/* Staff */}
+                            <SectionHeader label="Staff" tag="Per Seat pricing" />
+                            <InputRow
+                                label="Tutoring staff"
+                                online={inputs.tutoringStaffOnline}
+                                inPerson={inputs.tutoringStaffInPerson}
+                                onOnlineChange={set("tutoringStaffOnline")}
+                                onInPersonChange={set("tutoringStaffInPerson")}
+                            />
+                            <InputRow
+                                label="Non-tutoring staff"
+                                online={inputs.nonTutoringStaffOnline}
+                                inPerson={inputs.nonTutoringStaffInPerson}
+                                onOnlineChange={set("nonTutoringStaffOnline")}
+                                onInPersonChange={set("nonTutoringStaffInPerson")}
+                                tooltip="e.g. admin staff, coordinators, front-desk. Counted as staff seats alongside tutoring staff."
+                            />
+
+                            {/* Students */}
+                            <SectionHeader label="Students" tag="Per Student pricing" />
+                            <InputRow
+                                label="Active students"
+                                online={inputs.activeStudentsOnline}
+                                inPerson={inputs.activeStudentsInPerson}
+                                onOnlineChange={set("activeStudentsOnline")}
+                                onInPersonChange={set("activeStudentsInPerson")}
+                                tooltip="Students currently enrolled and active this month — regardless of how many sessions they attend."
+                            />
                         </CardContent>
                     </Card>
 
@@ -252,56 +516,116 @@ const PricingCalculator = () => {
                     <Card className="bg-card border-border h-fit">
                         <CardContent className="p-6">
                             <h2 className="text-lg font-semibold text-foreground mb-4">Unit Prices</h2>
-                            <div className="space-y-0">
-                                {[
-                                    { label: "Online session", price: PRICES_USD.onlineSession },
-                                    { label: "Offline session", price: PRICES_USD.offlineSession },
-                                    { label: "Online seat", price: PRICES_USD.onlineSeat },
-                                    { label: "Offline seat", price: PRICES_USD.offlineSeat },
-                                    { label: "Student online", price: PRICES_USD.studentOnline },
-                                    { label: "Student offline", price: PRICES_USD.studentOffline },
-                                ].map((item, i, arr) => (
-                                    <div key={item.label}>
-                                        <div className="flex justify-between items-center py-2.5">
-                                            <span className="text-sm text-foreground">{item.label}</span>
-                                            <span className="text-sm font-semibold text-foreground">{formatUnitPrice(item.price)}</span>
+
+                            {[
+                                {
+                                    section: "Per Session",
+                                    items: [
+                                        { label: "Online session", price: PRICES_USD.onlineSession },
+                                        { label: "In-person session", price: PRICES_USD.offlineSession },
+                                    ],
+                                },
+                                {
+                                    section: "Per Seat",
+                                    items: [
+                                        { label: "Online seat", price: PRICES_USD.onlineSeat },
+                                        { label: "In-person seat", price: PRICES_USD.offlineSeat },
+                                    ],
+                                },
+                                {
+                                    section: "Per Student",
+                                    items: [
+                                        { label: "Online student", price: PRICES_USD.studentOnline },
+                                        { label: "In-person student", price: PRICES_USD.studentOffline },
+                                    ],
+                                },
+                            ].map((group, gi, groups) => (
+                                <div key={group.section}>
+                                    <p className="text-[11px] text-muted-foreground/70 uppercase tracking-wider font-semibold mb-1 mt-4 first:mt-0">
+                                        {group.section}
+                                    </p>
+                                    {group.items.map((item, i, arr) => (
+                                        <div key={item.label}>
+                                            <div className="flex justify-between items-center py-2">
+                                                <span className="text-sm text-foreground">{item.label}</span>
+                                                <span className="text-sm font-semibold text-foreground">{fmt(item.price)}</span>
+                                            </div>
+                                            {i < arr.length - 1 && <Separator className="bg-border/50" />}
                                         </div>
-                                        {i < arr.length - 1 && <Separator className="bg-border/50" />}
-                                    </div>
-                                ))}
-                            </div>
+                                    ))}
+                                    {gi < groups.length - 1 && <Separator className="bg-border/30 mt-2" />}
+                                </div>
+                            ))}
                         </CardContent>
                     </Card>
                 </div>
 
                 {/* Results */}
-                {plans.length > 0 && (
-                    <div className="mb-8">
-                        <h2 className="text-xl font-semibold text-foreground mb-6 text-center">Your Estimated Monthly Costs</h2>
-                        <div className={`grid gap-5 ${plans.length === 1 ? 'max-w-sm mx-auto' : plans.length === 2 ? 'md:grid-cols-2 max-w-2xl mx-auto' : 'md:grid-cols-3'}`}>
-                            {plans.map(p => (
-                                <PlanCard
-                                    key={p.key}
-                                    title={p.title}
-                                    price={formatPrice(p.price)}
-                                    icon={p.icon}
-                                    description={p.description}
-                                    highlighted={p.highlighted}
-                                />
-                            ))}
-                        </div>
+                <div className="mb-8">
+                    <h2 className="text-xl font-semibold text-foreground mb-2 text-center">Your Estimated Monthly Costs</h2>
+                    {!hasAnyInput && (
+                        <p className="text-sm text-muted-foreground text-center mb-6">
+                            Fill in your business details above to see costs across all three plans.
+                        </p>
+                    )}
+                    {hasAnyInput && (
+                        <p className="text-xs text-muted-foreground text-center mb-6">
+                            The <span className="text-primary font-medium">Best Value</span> plan is automatically highlighted based on your inputs.
+                        </p>
+                    )}
+
+                    <div className="grid md:grid-cols-3 gap-5">
+                        {plans.map(p => (
+                            <PlanCard
+                                key={p.key}
+                                title={p.title}
+                                price={formatPrice(p.price)}
+                                rawPrice={p.price}
+                                icon={p.icon}
+                                description={p.description}
+                                formula={p.formula}
+                                highlighted={p.highlighted}
+                                hasInputs={hasAnyInput}
+                            />
+                        ))}
                     </div>
-                )}
+
+                    {/* Volume Discount Progress Hint */}
+                    {showVolumeHint && (
+                        <div className="mt-6 p-4 rounded-lg border border-border/60 bg-muted/30">
+                            <div className="flex items-center justify-between mb-2">
+                                <span className="text-xs text-muted-foreground">
+                                    Volume discount unlocks at {fmt(VOLUME_THRESHOLD, 0)}/mo
+                                </span>
+                                <span className="text-xs font-semibold text-foreground">{Math.round(volumeProgress)}%</span>
+                            </div>
+                            <div className="h-1.5 bg-border rounded-full overflow-hidden">
+                                <div
+                                    className="h-full bg-primary rounded-full transition-all duration-500"
+                                    style={{ width: `${volumeProgress}%` }}
+                                />
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-2">
+                                You're {fmt(VOLUME_THRESHOLD - bestPlanUSD, 0)} away from qualifying for custom volume pricing.
+                            </p>
+                        </div>
+                    )}
+                </div>
 
                 {/* Disclaimer */}
                 <Alert className="bg-muted/50 border-border/60">
                     <Info className="h-4 w-4 text-muted-foreground" />
                     <AlertDescription className="text-xs text-muted-foreground">
-                        These prices are indicative and for estimation purposes only. Actual prices may vary based on your specific requirements, usage patterns, and negotiated terms. Please <a href="https://www.wise.live/contact/" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">contact us</a> for a detailed quote.
+                        These prices are indicative and for estimation purposes only. Actual prices may vary based on your specific requirements, usage patterns, and negotiated terms. Please{" "}
+                        <a href="https://www.wise.live/contact/" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                            contact us
+                        </a>{" "}
+                        for a detailed quote.
                     </AlertDescription>
                 </Alert>
+
                 {/* Volume Discount Banner */}
-                {bestPlanUSD > 500 && (
+                {showVolumeDiscount && (
                     <Card className="mt-6 border-primary/30 bg-primary/5">
                         <CardContent className="p-6 flex flex-col sm:flex-row items-center gap-4">
                             <div className="p-3 rounded-full bg-primary/10 shrink-0">
@@ -309,7 +633,9 @@ const PricingCalculator = () => {
                             </div>
                             <div className="flex-1 text-center sm:text-left">
                                 <h3 className="font-semibold text-foreground mb-1">You're Eligible for Volume Discounts!</h3>
-                                <p className="text-sm text-muted-foreground">Based on your usage, you qualify for special volume-based pricing. Talk to our team to get a customized quote.</p>
+                                <p className="text-sm text-muted-foreground">
+                                    Based on your usage, you qualify for special volume-based pricing. Talk to our team to get a customized quote.
+                                </p>
                             </div>
                             <Button asChild className="px-8 shrink-0">
                                 <a href="https://cal.com/bilal.abidi/wise-discounts" target="_blank" rel="noopener noreferrer">
@@ -319,6 +645,7 @@ const PricingCalculator = () => {
                         </CardContent>
                     </Card>
                 )}
+
             </div>
         </div>
     );
