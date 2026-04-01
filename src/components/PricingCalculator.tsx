@@ -1,7 +1,8 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, type ChangeEvent, type ReactNode } from "react";
 import {
     Calculator, DollarSign, Monitor, Building2, Info,
     Globe, Sparkles, UserCog, GraduationCap, RotateCcw,
+    ChevronDown,
 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
@@ -11,6 +12,14 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
+import {
+    Accordion,
+    AccordionContent,
+    AccordionItem,
+    AccordionTrigger,
+} from "@/components/ui/accordion";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
 
 interface Currency {
     code: string;
@@ -138,7 +147,9 @@ function detectCurrency(): string {
         if (tz.startsWith("Europe/") && !tz.startsWith("Europe/London")) return "EUR";
         if (tz.startsWith("Australia/") || locale === "en-AU") return "AUD";
         if (tz.startsWith("America/Toronto") || tz.startsWith("America/Vancouver") || locale === "en-CA") return "CAD";
-    } catch { }
+    } catch {
+        /* ignore: fall back to USD */
+    }
     return "USD";
 }
 
@@ -152,10 +163,10 @@ const SectionHeader = ({ label, tag }: { label: string; tag: string }) => (
     </div>
 );
 
-const Tooltip = ({ children, content }: { children: React.ReactNode; content: string }) => (
+const Tooltip = ({ children, content }: { children: ReactNode; content: string }) => (
     <div className="relative group inline-flex items-center">
         {children}
-        <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-56 bg-popover border border-border rounded-lg p-2.5 text-xs text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20 shadow-lg leading-relaxed">
+        <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-56 bg-popover border border-border rounded-lg p-2.5 text-xs text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20 shadow-lg leading-relaxed max-md:hidden">
             {content}
             <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-border" />
         </div>
@@ -173,20 +184,22 @@ interface InputRowProps {
 }
 
 const InputRow = ({ label, online, inPerson, onOnlineChange, onInPersonChange, tooltip, indented }: InputRowProps) => {
-    const handleChange = (setter: (v: number) => void) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleChange = (setter: (v: number) => void) => (e: ChangeEvent<HTMLInputElement>) => {
         const raw = e.target.value;
         if (raw === "") { setter(0); return; }
         setter(Math.max(0, Number(raw)));
     };
 
     return (
-        <div className={`grid grid-cols-[1fr_110px_110px] sm:grid-cols-[1fr_120px_120px] gap-3 items-center py-2.5 border-b border-border/40 last:border-0 ${indented ? "pl-3" : ""}`}>
+        <div className={`hidden md:grid grid-cols-[1fr_110px_110px] sm:grid-cols-[1fr_120px_120px] gap-3 items-center py-2.5 border-b border-border/40 last:border-0 ${indented ? "pl-3" : ""}`}>
             <div className="flex items-center gap-1.5 min-w-0">
                 {indented && <span className="text-muted-foreground/60 text-xs select-none shrink-0">↳</span>}
                 <Label className="text-sm text-foreground font-normal truncate">{label}</Label>
                 {tooltip && (
                     <Tooltip content={tooltip}>
-                        <Info className="w-3.5 h-3.5 text-muted-foreground/60 cursor-help shrink-0" />
+                        <span className="inline-flex" title={tooltip}>
+                            <Info className="w-3.5 h-3.5 text-muted-foreground/60 cursor-help shrink-0" />
+                        </span>
                     </Tooltip>
                 )}
             </div>
@@ -210,11 +223,129 @@ const InputRow = ({ label, online, inPerson, onOnlineChange, onInPersonChange, t
     );
 };
 
+type MobilePresetKind = "sessions" | "seats" | "students";
+
+const MOBILE_PRESET_OPTIONS: Record<MobilePresetKind, number[]> = {
+    sessions: [50, 100, 200, 500, 1000],
+    seats: [1, 3, 5, 10, 20],
+    students: [50, 100, 200, 500, 1000],
+};
+
+interface MobileFieldRowProps {
+    label: string;
+    value: number;
+    onChange: (v: number) => void;
+    tooltip?: string;
+    indented?: boolean;
+    presetKind: MobilePresetKind;
+}
+
+const MobileFieldRow = ({ label, value, onChange, tooltip, indented, presetKind }: MobileFieldRowProps) => {
+    const [open, setOpen] = useState(false);
+    const [customDraft, setCustomDraft] = useState("");
+    const presets = MOBILE_PRESET_OPTIONS[presetKind];
+
+    const handleOpenChange = (next: boolean) => {
+        setOpen(next);
+        if (next) setCustomDraft(value === 0 ? "" : String(value));
+    };
+
+    const pickPreset = (n: number) => {
+        onChange(n);
+        setOpen(false);
+    };
+
+    const applyCustom = () => {
+        const raw = customDraft.trim();
+        if (raw === "") {
+            onChange(0);
+            setOpen(false);
+            return;
+        }
+        const n = Math.floor(Number(raw));
+        if (Number.isNaN(n) || n < 0) return;
+        onChange(n);
+        setOpen(false);
+    };
+
+    return (
+        <Popover open={open} onOpenChange={handleOpenChange}>
+            <PopoverTrigger asChild>
+                <button
+                    type="button"
+                    className={cn(
+                        "flex w-full items-center justify-between gap-3 py-2.5 border-b border-border/40 last:border-0 text-left min-h-10 touch-manipulation rounded-sm",
+                        "hover:bg-muted/35 active:bg-muted/50 transition-colors",
+                        indented && "pl-3",
+                    )}
+                >
+                    <div className="flex items-start gap-1.5 min-w-0 flex-1">
+                        {indented && <span className="text-muted-foreground/60 text-xs select-none shrink-0 mt-0.5">↳</span>}
+                        <span className="text-sm text-foreground font-normal leading-snug break-words text-left">{label}</span>
+                        {tooltip && (
+                            <Tooltip content={tooltip}>
+                                <span className="inline-flex mt-0.5 shrink-0" title={tooltip}>
+                                    <Info className="w-4 h-4 text-muted-foreground/60 cursor-help" />
+                                </span>
+                            </Tooltip>
+                        )}
+                    </div>
+                    <span className="flex items-center gap-1 shrink-0 text-sm font-semibold tabular-nums text-foreground">
+                        {value}
+                        <ChevronDown className="h-4 w-4 text-muted-foreground" aria-hidden />
+                    </span>
+                </button>
+            </PopoverTrigger>
+            <PopoverContent align="end" side="bottom" className="p-0">
+                <div className="max-h-[min(50vh,260px)] overflow-y-auto py-1">
+                    {presets.map((n) => (
+                        <button
+                            key={n}
+                            type="button"
+                            className="w-full px-3 py-2.5 text-left text-sm text-foreground hover:bg-muted"
+                            onClick={() => pickPreset(n)}
+                        >
+                            {n}
+                        </button>
+                    ))}
+                </div>
+                <Separator />
+                <div className="p-3 space-y-2">
+                    <p className="text-[11px] text-muted-foreground font-semibold uppercase tracking-wide">Custom</p>
+                    <div className="flex gap-2">
+                        <Input
+                            type="number"
+                            min={0}
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            value={customDraft}
+                            onChange={(e: ChangeEvent<HTMLInputElement>) => setCustomDraft(e.target.value)}
+                            onKeyDown={(e) => e.key === "Enter" && applyCustom()}
+                            placeholder="Enter value"
+                            className="h-9 flex-1 bg-muted border-border [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        />
+                        <Button type="button" size="sm" className="shrink-0 px-3" onClick={applyCustom}>
+                            Apply
+                        </Button>
+                    </div>
+                </div>
+            </PopoverContent>
+        </Popover>
+    );
+};
+
+const MobileChannelHeading = ({ icon, title }: { icon: ReactNode; title: string }) => (
+    <div className="flex items-center gap-2 text-sm font-semibold text-foreground mt-4 first:mt-0 mb-1">
+        {icon}
+        {title}
+    </div>
+);
+
 interface PlanCardProps {
     title: string;
     price: string;
     rawPrice: number;
-    icon: React.ReactNode;
+    icon: ReactNode;
     description: string;
     formula: string;
     highlighted: boolean;
@@ -264,12 +395,8 @@ const PlanCard = ({ title, price, rawPrice, icon, description, formula, highligh
 );
 
 const PricingCalculator = () => {
-    const [currencyCode, setCurrencyCode] = useState("USD");
+    const [currencyCode, setCurrencyCode] = useState(() => detectCurrency());
     const [inputs, setInputs] = useState<InputState>(EMPTY_STATE);
-
-    useEffect(() => {
-        setCurrencyCode(detectCurrency());
-    }, []);
 
     const set = (key: keyof InputState) => (v: number) =>
         setInputs(prev => ({ ...prev, [key]: v }));
@@ -367,6 +494,8 @@ const PricingCalculator = () => {
         return allPlans.map(p => ({ ...p, highlighted: p.price > 0 && p.price === minPrice }));
     }, [pricing, currencyCode, inputs.activeStudentsOnline, inputs.activeStudentsInPerson]);
 
+    const bestPlan = plans.find(p => p.highlighted && p.price > 0);
+
     const nonZeroPlanPrices = plans.filter(p => p.price > 0).map(p => p.price);
     const bestPlanUSD = nonZeroPlanPrices.length > 0 ? Math.min(...nonZeroPlanPrices) : 0;
 
@@ -376,7 +505,7 @@ const PricingCalculator = () => {
     const volumeProgress = Math.min((bestPlanUSD / VOLUME_THRESHOLD) * 100, 100);
 
     return (
-        <div className="min-h-screen bg-background py-12 px-4">
+        <div className="min-h-screen bg-background py-12 px-4 pb-28 md:pb-12">
             <div className="max-w-5xl mx-auto">
 
                 {/* Header */}
@@ -395,31 +524,33 @@ const PricingCalculator = () => {
 
                 {/* Presets + Currency bar */}
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-6">
-                    <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-xs text-muted-foreground shrink-0">Try a preset:</span>
-                        {PRESETS.map(preset => (
-                            <Button
-                                key={preset.key}
-                                variant="outline"
-                                size="sm"
-                                className="h-8 text-xs border-border/60 hover:border-primary/50 hover:text-primary"
-                                onClick={() => setInputs(preset.values)}
-                                title={preset.description}
-                            >
-                                {preset.label}
-                            </Button>
-                        ))}
-                        {hasAnyInput && (
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-8 text-xs text-muted-foreground hover:text-foreground"
-                                onClick={() => setInputs(EMPTY_STATE)}
-                            >
-                                <RotateCcw className="w-3 h-3 mr-1" />
-                                Reset
-                            </Button>
-                        )}
+                    <div className="w-full min-w-0 max-md:-mx-1 max-md:overflow-x-auto max-md:pb-1">
+                        <div className="flex max-md:flex-nowrap md:flex-wrap items-center gap-2">
+                            <span className="text-xs text-muted-foreground shrink-0">Try a preset:</span>
+                            {PRESETS.map(preset => (
+                                <Button
+                                    key={preset.key}
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-8 text-xs shrink-0 border-border/60 hover:border-primary/50 hover:text-primary"
+                                    onClick={() => setInputs(preset.values)}
+                                    title={preset.description}
+                                >
+                                    {preset.label}
+                                </Button>
+                            ))}
+                            {hasAnyInput && (
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8 text-xs shrink-0 text-muted-foreground hover:text-foreground"
+                                    onClick={() => setInputs(EMPTY_STATE)}
+                                >
+                                    <RotateCcw className="w-3 h-3 mr-1" />
+                                    Reset
+                                </Button>
+                            )}
+                        </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                         <Globe className="w-4 h-4 text-muted-foreground" />
@@ -444,71 +575,198 @@ const PricingCalculator = () => {
                             <h2 className="text-lg font-semibold text-foreground mb-1">Your Business Details</h2>
                             <p className="text-xs text-muted-foreground mb-4">Adjust the numbers to match your typical monthly setup</p>
 
-                            {/* Column Headers */}
-                            <div className="grid grid-cols-[1fr_110px_110px] sm:grid-cols-[1fr_120px_120px] gap-3 mb-1">
-                                <span />
-                                <div className="flex items-center justify-center gap-1.5 text-sm font-semibold text-foreground">
-                                    <Monitor className="w-4 h-4" /> Online
+                            <div className="hidden md:block">
+                                {/* Column Headers */}
+                                <div className="grid grid-cols-[1fr_110px_110px] sm:grid-cols-[1fr_120px_120px] gap-3 mb-1">
+                                    <span />
+                                    <div className="flex items-center justify-center gap-1.5 text-sm font-semibold text-foreground">
+                                        <Monitor className="w-4 h-4" /> Online
+                                    </div>
+                                    <div className="flex items-center justify-center gap-1.5 text-sm font-semibold text-foreground">
+                                        <Building2 className="w-4 h-4" /> In-person
+                                    </div>
                                 </div>
-                                <div className="flex items-center justify-center gap-1.5 text-sm font-semibold text-foreground">
-                                    <Building2 className="w-4 h-4" /> In-person
-                                </div>
+
+                                {/* Sessions */}
+                                <SectionHeader label="Sessions" tag="Per Session pricing" />
+                                <InputRow
+                                    label="1:1 sessions"
+                                    online={inputs.sessions1on1Online}
+                                    inPerson={inputs.sessions1on1InPerson}
+                                    onOnlineChange={set("sessions1on1Online")}
+                                    onInPersonChange={set("sessions1on1InPerson")}
+                                />
+                                <InputRow
+                                    label="Group sessions"
+                                    online={inputs.groupSessionsOnline}
+                                    inPerson={inputs.groupSessionsInPerson}
+                                    onOnlineChange={set("groupSessionsOnline")}
+                                    onInPersonChange={set("groupSessionsInPerson")}
+                                />
+                                <InputRow
+                                    label="Students per group"
+                                    online={inputs.studentsPerGroupOnline}
+                                    inPerson={inputs.studentsPerGroupInPerson}
+                                    onOnlineChange={set("studentsPerGroupOnline")}
+                                    onInPersonChange={set("studentsPerGroupInPerson")}
+                                    indented
+                                    tooltip="The number of students in each group session. Multiplied by group sessions to get total participant-sessions."
+                                />
+
+                                {/* Staff */}
+                                <SectionHeader label="Staff" tag="Per Seat pricing" />
+                                <InputRow
+                                    label="Tutoring staff"
+                                    online={inputs.tutoringStaffOnline}
+                                    inPerson={inputs.tutoringStaffInPerson}
+                                    onOnlineChange={set("tutoringStaffOnline")}
+                                    onInPersonChange={set("tutoringStaffInPerson")}
+                                />
+                                <InputRow
+                                    label="Non-tutoring staff"
+                                    online={inputs.nonTutoringStaffOnline}
+                                    inPerson={inputs.nonTutoringStaffInPerson}
+                                    onOnlineChange={set("nonTutoringStaffOnline")}
+                                    onInPersonChange={set("nonTutoringStaffInPerson")}
+                                    tooltip="e.g. admin staff, coordinators, front-desk. Counted as staff seats alongside tutoring staff."
+                                />
+
+                                {/* Students */}
+                                <SectionHeader label="Students" tag="Per Student pricing" />
+                                <InputRow
+                                    label="Active students"
+                                    online={inputs.activeStudentsOnline}
+                                    inPerson={inputs.activeStudentsInPerson}
+                                    onOnlineChange={set("activeStudentsOnline")}
+                                    onInPersonChange={set("activeStudentsInPerson")}
+                                    tooltip="Students currently enrolled and active this month — regardless of how many sessions they attend."
+                                />
                             </div>
 
-                            {/* Sessions */}
-                            <SectionHeader label="Sessions" tag="Per Session pricing" />
-                            <InputRow
-                                label="1:1 sessions"
-                                online={inputs.sessions1on1Online}
-                                inPerson={inputs.sessions1on1InPerson}
-                                onOnlineChange={set("sessions1on1Online")}
-                                onInPersonChange={set("sessions1on1InPerson")}
-                            />
-                            <InputRow
-                                label="Group sessions"
-                                online={inputs.groupSessionsOnline}
-                                inPerson={inputs.groupSessionsInPerson}
-                                onOnlineChange={set("groupSessionsOnline")}
-                                onInPersonChange={set("groupSessionsInPerson")}
-                            />
-                            <InputRow
-                                label="Students per group"
-                                online={inputs.studentsPerGroupOnline}
-                                inPerson={inputs.studentsPerGroupInPerson}
-                                onOnlineChange={set("studentsPerGroupOnline")}
-                                onInPersonChange={set("studentsPerGroupInPerson")}
-                                indented
-                                tooltip="The number of students in each group session. Multiplied by group sessions to get total participant-sessions."
-                            />
-
-                            {/* Staff */}
-                            <SectionHeader label="Staff" tag="Per Seat pricing" />
-                            <InputRow
-                                label="Tutoring staff"
-                                online={inputs.tutoringStaffOnline}
-                                inPerson={inputs.tutoringStaffInPerson}
-                                onOnlineChange={set("tutoringStaffOnline")}
-                                onInPersonChange={set("tutoringStaffInPerson")}
-                            />
-                            <InputRow
-                                label="Non-tutoring staff"
-                                online={inputs.nonTutoringStaffOnline}
-                                inPerson={inputs.nonTutoringStaffInPerson}
-                                onOnlineChange={set("nonTutoringStaffOnline")}
-                                onInPersonChange={set("nonTutoringStaffInPerson")}
-                                tooltip="e.g. admin staff, coordinators, front-desk. Counted as staff seats alongside tutoring staff."
-                            />
-
-                            {/* Students */}
-                            <SectionHeader label="Students" tag="Per Student pricing" />
-                            <InputRow
-                                label="Active students"
-                                online={inputs.activeStudentsOnline}
-                                inPerson={inputs.activeStudentsInPerson}
-                                onOnlineChange={set("activeStudentsOnline")}
-                                onInPersonChange={set("activeStudentsInPerson")}
-                                tooltip="Students currently enrolled and active this month — regardless of how many sessions they attend."
-                            />
+                            <Accordion type="single" collapsible defaultValue="sessions" className="md:hidden w-full -mx-1">
+                                <AccordionItem value="sessions" className="border-border/60">
+                                    <AccordionTrigger className="py-3 hover:no-underline [&[data-state=open]]:border-b-0">
+                                        <div className="flex flex-col items-start gap-2 text-left">
+                                            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Sessions</span>
+                                            <Badge className="text-[10px] px-2 py-0 h-5 bg-primary/10 text-primary border-0 font-medium whitespace-normal text-left">
+                                                Per Session pricing
+                                            </Badge>
+                                        </div>
+                                    </AccordionTrigger>
+                                    <AccordionContent className="pt-0">
+                                        <MobileChannelHeading icon={<Monitor className="w-4 h-4" />} title="Online" />
+                                        <MobileFieldRow
+                                            label="1:1 sessions"
+                                            value={inputs.sessions1on1Online}
+                                            onChange={set("sessions1on1Online")}
+                                            presetKind="sessions"
+                                        />
+                                        <MobileFieldRow
+                                            label="Group sessions"
+                                            value={inputs.groupSessionsOnline}
+                                            onChange={set("groupSessionsOnline")}
+                                            presetKind="sessions"
+                                        />
+                                        <MobileFieldRow
+                                            label="Students per group"
+                                            value={inputs.studentsPerGroupOnline}
+                                            onChange={set("studentsPerGroupOnline")}
+                                            indented
+                                            tooltip="The number of students in each group session. Multiplied by group sessions to get total participant-sessions."
+                                            presetKind="sessions"
+                                        />
+                                        <MobileChannelHeading icon={<Building2 className="w-4 h-4" />} title="In-person" />
+                                        <MobileFieldRow
+                                            label="1:1 sessions"
+                                            value={inputs.sessions1on1InPerson}
+                                            onChange={set("sessions1on1InPerson")}
+                                            presetKind="sessions"
+                                        />
+                                        <MobileFieldRow
+                                            label="Group sessions"
+                                            value={inputs.groupSessionsInPerson}
+                                            onChange={set("groupSessionsInPerson")}
+                                            presetKind="sessions"
+                                        />
+                                        <MobileFieldRow
+                                            label="Students per group"
+                                            value={inputs.studentsPerGroupInPerson}
+                                            onChange={set("studentsPerGroupInPerson")}
+                                            indented
+                                            tooltip="The number of students in each group session. Multiplied by group sessions to get total participant-sessions."
+                                            presetKind="sessions"
+                                        />
+                                    </AccordionContent>
+                                </AccordionItem>
+                                <AccordionItem value="staff" className="border-border/60">
+                                    <AccordionTrigger className="py-3 hover:no-underline">
+                                        <div className="flex flex-col items-start gap-2 text-left">
+                                            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Staff</span>
+                                            <Badge className="text-[10px] px-2 py-0 h-5 bg-primary/10 text-primary border-0 font-medium whitespace-normal text-left">
+                                                Per Seat pricing
+                                            </Badge>
+                                        </div>
+                                    </AccordionTrigger>
+                                    <AccordionContent className="pt-0">
+                                        <MobileChannelHeading icon={<Monitor className="w-4 h-4" />} title="Online" />
+                                        <MobileFieldRow
+                                            label="Tutoring staff"
+                                            value={inputs.tutoringStaffOnline}
+                                            onChange={set("tutoringStaffOnline")}
+                                            presetKind="seats"
+                                        />
+                                        <MobileFieldRow
+                                            label="Non-tutoring staff"
+                                            value={inputs.nonTutoringStaffOnline}
+                                            onChange={set("nonTutoringStaffOnline")}
+                                            tooltip="e.g. admin staff, coordinators, front-desk. Counted as staff seats alongside tutoring staff."
+                                            presetKind="seats"
+                                        />
+                                        <MobileChannelHeading icon={<Building2 className="w-4 h-4" />} title="In-person" />
+                                        <MobileFieldRow
+                                            label="Tutoring staff"
+                                            value={inputs.tutoringStaffInPerson}
+                                            onChange={set("tutoringStaffInPerson")}
+                                            presetKind="seats"
+                                        />
+                                        <MobileFieldRow
+                                            label="Non-tutoring staff"
+                                            value={inputs.nonTutoringStaffInPerson}
+                                            onChange={set("nonTutoringStaffInPerson")}
+                                            tooltip="e.g. admin staff, coordinators, front-desk. Counted as staff seats alongside tutoring staff."
+                                            presetKind="seats"
+                                        />
+                                    </AccordionContent>
+                                </AccordionItem>
+                                <AccordionItem value="students" className="border-border/60 border-b-0">
+                                    <AccordionTrigger className="py-3 hover:no-underline">
+                                        <div className="flex flex-col items-start gap-2 text-left">
+                                            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Students</span>
+                                            <Badge className="text-[10px] px-2 py-0 h-5 bg-primary/10 text-primary border-0 font-medium whitespace-normal text-left">
+                                                Per Student pricing
+                                            </Badge>
+                                        </div>
+                                    </AccordionTrigger>
+                                    <AccordionContent className="pt-0">
+                                        <MobileChannelHeading icon={<Monitor className="w-4 h-4" />} title="Online" />
+                                        <MobileFieldRow
+                                            label="Active students"
+                                            value={inputs.activeStudentsOnline}
+                                            onChange={set("activeStudentsOnline")}
+                                            tooltip="Students currently enrolled and active this month — regardless of how many sessions they attend."
+                                            presetKind="students"
+                                        />
+                                        <MobileChannelHeading icon={<Building2 className="w-4 h-4" />} title="In-person" />
+                                        <MobileFieldRow
+                                            label="Active students"
+                                            value={inputs.activeStudentsInPerson}
+                                            onChange={set("activeStudentsInPerson")}
+                                            tooltip="Students currently enrolled and active this month — regardless of how many sessions they attend."
+                                            presetKind="students"
+                                        />
+                                    </AccordionContent>
+                                </AccordionItem>
+                            </Accordion>
                         </CardContent>
                     </Card>
 
@@ -561,7 +819,7 @@ const PricingCalculator = () => {
                 </div>
 
                 {/* Results */}
-                <div className="mb-8">
+                <div className="mb-8 scroll-mt-24" id="estimated-monthly-costs">
                     <h2 className="text-xl font-semibold text-foreground mb-2 text-center">Your Estimated Monthly Costs</h2>
                     {!hasAnyInput && (
                         <p className="text-sm text-muted-foreground text-center mb-6">
@@ -646,6 +904,35 @@ const PricingCalculator = () => {
                     </Card>
                 )}
 
+            </div>
+
+            <div
+                className="fixed bottom-0 left-0 right-0 z-50 md:hidden border-t border-border bg-card/95 backdrop-blur-md supports-[backdrop-filter]:bg-card/85 shadow-[0_-8px_30px_-12px_rgba(0,0,0,0.45)]"
+                style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
+            >
+                <div className="max-w-5xl mx-auto px-4 pt-3 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                        {hasAnyInput && bestPlan ? (
+                            <>
+                                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Best estimate</p>
+                                <p className="text-sm font-semibold text-foreground truncate">
+                                    {bestPlan.title} · {formatPrice(bestPlan.price)}
+                                    <span className="text-muted-foreground font-normal"> / mo</span>
+                                </p>
+                            </>
+                        ) : (
+                            <p className="text-sm text-muted-foreground">Add details above for estimates</p>
+                        )}
+                    </div>
+                    {hasAnyInput && (
+                        <a
+                            href="#estimated-monthly-costs"
+                            className="text-sm font-medium text-primary shrink-0 py-2 touch-manipulation"
+                        >
+                            View breakdown
+                        </a>
+                    )}
+                </div>
             </div>
         </div>
     );
