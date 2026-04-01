@@ -1,10 +1,9 @@
-import { useState, useMemo, type ChangeEvent, type ReactNode } from "react";
+import { useState, useMemo, useEffect, useRef, type ChangeEvent, type ReactNode } from "react";
 import {
     Calculator, DollarSign, Monitor, Building2, Info,
-    Globe, Sparkles, UserCog, GraduationCap, RotateCcw,
+    Sparkles, UserCog, GraduationCap, RotateCcw,
     ChevronDown,
 } from "lucide-react";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -12,12 +11,6 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
-import {
-    Accordion,
-    AccordionContent,
-    AccordionItem,
-    AccordionTrigger,
-} from "@/components/ui/accordion";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 
@@ -70,11 +63,16 @@ const EMPTY_STATE: InputState = {
     activeStudentsOnline: 0, activeStudentsInPerson: 0,
 };
 
-const PRESETS: Array<{ key: string; label: string; description: string; values: InputState }> = [
+const PRESETS: Array<{
+    key: string;
+    label: string;
+    blurb: string;
+    values: InputState;
+}> = [
     {
         key: "online-only",
         label: "Online Only",
-        description: "Mid-size org, fully online delivery",
+        blurb: "All sessions and staff are online — no in-person fields.",
         values: {
             sessions1on1Online: 100, sessions1on1InPerson: 0,
             groupSessionsOnline: 30, groupSessionsInPerson: 0,
@@ -87,7 +85,7 @@ const PRESETS: Array<{ key: string; label: string; description: string; values: 
     {
         key: "hybrid",
         label: "Hybrid",
-        description: "Mid-size org, online and in-person",
+        blurb: "Both online and in-person delivery.",
         values: {
             sessions1on1Online: 100, sessions1on1InPerson: 50,
             groupSessionsOnline: 30, groupSessionsInPerson: 20,
@@ -100,7 +98,7 @@ const PRESETS: Array<{ key: string; label: string; description: string; values: 
     {
         key: "inperson-only",
         label: "In-person Only",
-        description: "Mid-size org, fully in-person delivery",
+        blurb: "Centre- or site-based only — online fields hidden.",
         values: {
             sessions1on1Online: 0, sessions1on1InPerson: 100,
             groupSessionsOnline: 0, groupSessionsInPerson: 30,
@@ -113,7 +111,7 @@ const PRESETS: Array<{ key: string; label: string; description: string; values: 
     {
         key: "online-1on1",
         label: "Online 1:1",
-        description: "Mid-size org, online 1:1 sessions only",
+        blurb: "Private online lessons only — no group rows.",
         values: {
             sessions1on1Online: 100, sessions1on1InPerson: 0,
             groupSessionsOnline: 0, groupSessionsInPerson: 0,
@@ -126,7 +124,7 @@ const PRESETS: Array<{ key: string; label: string; description: string; values: 
     {
         key: "online-group",
         label: "Online Groups",
-        description: "Mid-size org, online group sessions only",
+        blurb: "Group classes online — no 1:1 line item.",
         values: {
             sessions1on1Online: 0, sessions1on1InPerson: 0,
             groupSessionsOnline: 50, groupSessionsInPerson: 0,
@@ -137,6 +135,23 @@ const PRESETS: Array<{ key: string; label: string; description: string; values: 
         },
     },
 ];
+
+function maskFromPreset(values: InputState): Record<keyof InputState, boolean> {
+    return {
+        sessions1on1Online: values.sessions1on1Online > 0,
+        sessions1on1InPerson: values.sessions1on1InPerson > 0,
+        groupSessionsOnline: values.groupSessionsOnline > 0,
+        groupSessionsInPerson: values.groupSessionsInPerson > 0,
+        studentsPerGroupOnline: values.studentsPerGroupOnline > 0,
+        studentsPerGroupInPerson: values.studentsPerGroupInPerson > 0,
+        tutoringStaffOnline: values.tutoringStaffOnline > 0,
+        tutoringStaffInPerson: values.tutoringStaffInPerson > 0,
+        nonTutoringStaffOnline: values.nonTutoringStaffOnline > 0,
+        nonTutoringStaffInPerson: values.nonTutoringStaffInPerson > 0,
+        activeStudentsOnline: values.activeStudentsOnline > 0,
+        activeStudentsInPerson: values.activeStudentsInPerson > 0,
+    };
+}
 
 function detectCurrency(): string {
     try {
@@ -335,11 +350,76 @@ const MobileFieldRow = ({ label, value, onChange, tooltip, indented, presetKind 
 };
 
 const MobileChannelHeading = ({ icon, title }: { icon: ReactNode; title: string }) => (
-    <div className="flex items-center gap-2 text-sm font-semibold text-foreground mt-4 first:mt-0 mb-1">
+    <div className="flex items-center gap-2 text-sm font-semibold text-foreground mt-5 first:mt-0 mb-1.5">
         {icon}
         {title}
     </div>
 );
+
+const MobileSectionHeader = ({ title, tag, suppressTopRule }: { title: string; tag: string; suppressTopRule?: boolean }) => (
+    <div
+        className={cn(
+            "mt-8 border-t border-border/50 pt-6",
+            suppressTopRule && "mt-4 border-t-0 pt-0",
+        )}
+    >
+        <div className="flex flex-row items-start justify-between gap-3">
+            <h3 className="text-base font-semibold text-foreground tracking-tight min-w-0 flex-1">{title}</h3>
+            <Badge className="text-[10px] px-2 py-0.5 h-6 bg-primary/15 text-primary border border-primary/25 font-medium shrink-0 text-right max-w-[58%] sm:max-w-[50%] leading-tight">
+                {tag}
+            </Badge>
+        </div>
+    </div>
+);
+
+const UNIT_PRICE_GROUPS = [
+    {
+        section: "Per Session",
+        items: [
+            { label: "Online session", price: PRICES_USD.onlineSession },
+            { label: "In-person session", price: PRICES_USD.offlineSession },
+        ],
+    },
+    {
+        section: "Per Seat",
+        items: [
+            { label: "Online seat", price: PRICES_USD.onlineSeat },
+            { label: "In-person seat", price: PRICES_USD.offlineSeat },
+        ],
+    },
+    {
+        section: "Per Student",
+        items: [
+            { label: "Online student", price: PRICES_USD.studentOnline },
+            { label: "In-person student", price: PRICES_USD.studentOffline },
+        ],
+    },
+] as const;
+
+function UnitPricesPanel({ fmt }: { fmt: (usdAmount: number, decimals?: number) => string }) {
+    return (
+        <>
+            <h2 className="text-lg font-semibold text-foreground mb-4">Unit Prices</h2>
+            {UNIT_PRICE_GROUPS.map((group, gi, groups) => (
+                <div key={group.section}>
+                    <p className="text-[11px] text-muted-foreground/70 uppercase tracking-wider font-semibold mb-1 mt-4 first:mt-0">
+                        {group.section}
+                    </p>
+                    {group.items.map((item, i, arr) => (
+                        <div key={item.label}>
+                            <div className="flex justify-between items-center py-2">
+                                <span className="text-sm text-foreground">{item.label}</span>
+                                <span className="text-sm font-semibold text-foreground">{fmt(item.price)}</span>
+                            </div>
+                            {i < arr.length - 1 && <Separator className="bg-border/50" />}
+                        </div>
+                    ))}
+                    {gi < groups.length - 1 && <Separator className="bg-border/30 mt-2" />}
+                </div>
+            ))}
+        </>
+    );
+}
 
 interface PlanCardProps {
     title: string;
@@ -394,12 +474,99 @@ const PlanCard = ({ title, price, rawPrice, icon, description, formula, highligh
     </Card>
 );
 
+type MobileStep = "business-type" | "details" | "monthly-pricing";
+
+const TALK_TO_US_CAL_URL =
+    "https://cal.com/bilal.abidi/wise-discounts?overlayCalendar=true";
+
+function CompactCurrencyPicker({
+    currencyCode,
+    setCurrencyCode,
+    size = "default",
+}: {
+    currencyCode: string;
+    setCurrencyCode: (code: string) => void;
+    size?: "default" | "footer";
+}) {
+    const cur = CURRENCIES.find((c) => c.code === currencyCode) ?? CURRENCIES[0];
+    return (
+        <Popover>
+            <PopoverTrigger asChild>
+                <button
+                    type="button"
+                    className={cn(
+                        "inline-flex items-center gap-0.5 rounded-sm text-primary hover:text-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ring-offset-background touch-manipulation",
+                        size === "footer" ? "text-xs" : "text-sm",
+                    )}
+                    aria-label={`Prices in ${cur.code}, change currency`}
+                >
+                    <span className="font-semibold tabular-nums">{cur.code}</span>
+                    <ChevronDown className="h-3 w-3 opacity-60 shrink-0" aria-hidden />
+                </button>
+            </PopoverTrigger>
+            <PopoverContent align="end" side="top" className="z-[60] w-[min(100vw-2rem,220px)] p-1">
+                {CURRENCIES.map((c) => (
+                    <button
+                        key={c.code}
+                        type="button"
+                        className={cn(
+                            "w-full rounded-sm px-2.5 py-2 text-left text-sm text-foreground hover:bg-muted transition-colors",
+                            c.code === currencyCode && "bg-muted font-medium",
+                        )}
+                        onClick={() => setCurrencyCode(c.code)}
+                    >
+                        {c.label}
+                    </button>
+                ))}
+            </PopoverContent>
+        </Popover>
+    );
+}
+
 const PricingCalculator = () => {
     const [currencyCode, setCurrencyCode] = useState(() => detectCurrency());
     const [inputs, setInputs] = useState<InputState>(EMPTY_STATE);
+    const [mobileStep, setMobileStep] = useState<MobileStep>("business-type");
+    const [fieldMask, setFieldMask] = useState<Record<keyof InputState, boolean> | null>(null);
+    const [selectedPresetKey, setSelectedPresetKey] = useState<string>(PRESETS[0].key);
+    const [estimatesInView, setEstimatesInView] = useState(false);
+    const estimatesSectionRef = useRef<HTMLDivElement>(null);
+
+    const scrollToMonthlyEstimates = () => {
+        estimatesSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    };
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        const el = estimatesSectionRef.current;
+        if (!el || mobileStep !== "monthly-pricing") return;
+        queueMicrotask(() => setEstimatesInView(false));
+        const obs = new IntersectionObserver(
+            ([entry]) => {
+                setEstimatesInView(entry.isIntersecting && entry.intersectionRatio > 0.08);
+            },
+            { root: null, threshold: [0, 0.08, 0.15, 0.25], rootMargin: "0px 0px -8% 0px" },
+        );
+        obs.observe(el);
+        return () => obs.disconnect();
+    }, [mobileStep]);
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        if (!window.matchMedia("(max-width: 767px)").matches) return;
+        const v = PRESETS[0].values;
+        const m = maskFromPreset(v);
+        queueMicrotask(() => {
+            setInputs(v);
+            setFieldMask(m);
+            setSelectedPresetKey(PRESETS[0].key);
+        });
+    }, []);
 
     const set = (key: keyof InputState) => (v: number) =>
         setInputs(prev => ({ ...prev, [key]: v }));
+
+    const selectedPreset = PRESETS.find((p) => p.key === selectedPresetKey) ?? PRESETS[0];
 
     const currency = CURRENCIES.find((c) => c.code === currencyCode) ?? CURRENCIES[0];
 
@@ -522,10 +689,10 @@ const PricingCalculator = () => {
                     </p>
                 </div>
 
-                {/* Presets + Currency bar */}
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-6">
-                    <div className="w-full min-w-0 max-md:-mx-1 max-md:overflow-x-auto max-md:pb-1">
-                        <div className="flex max-md:flex-nowrap md:flex-wrap items-center gap-2">
+                {/* Presets + Currency bar (tablet/desktop) */}
+                <div className="hidden md:flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-6">
+                    <div className="w-full min-w-0 overflow-x-auto pb-1">
+                        <div className="flex flex-wrap items-center gap-2">
                             <span className="text-xs text-muted-foreground shrink-0">Try a preset:</span>
                             {PRESETS.map(preset => (
                                 <Button
@@ -534,7 +701,7 @@ const PricingCalculator = () => {
                                     size="sm"
                                     className="h-8 text-xs shrink-0 border-border/60 hover:border-primary/50 hover:text-primary"
                                     onClick={() => setInputs(preset.values)}
-                                    title={preset.description}
+                                    title={preset.blurb}
                                 >
                                     {preset.label}
                                 </Button>
@@ -544,7 +711,17 @@ const PricingCalculator = () => {
                                     variant="ghost"
                                     size="sm"
                                     className="h-8 text-xs shrink-0 text-muted-foreground hover:text-foreground"
-                                    onClick={() => setInputs(EMPTY_STATE)}
+                                    onClick={() => {
+                                        setMobileStep("business-type");
+                                        setSelectedPresetKey(PRESETS[0].key);
+                                        if (typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches) {
+                                            setInputs(PRESETS[0].values);
+                                            setFieldMask(maskFromPreset(PRESETS[0].values));
+                                        } else {
+                                            setInputs(EMPTY_STATE);
+                                            setFieldMask(null);
+                                        }
+                                    }}
                                 >
                                     <RotateCcw className="w-3 h-3 mr-1" />
                                     Reset
@@ -553,22 +730,255 @@ const PricingCalculator = () => {
                         </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                        <Globe className="w-4 h-4 text-muted-foreground" />
-                        <span className="text-xs text-muted-foreground">Prices in:</span>
-                        <Select value={currencyCode} onValueChange={setCurrencyCode}>
-                            <SelectTrigger className="w-[130px] h-8 bg-card border-border text-sm">
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {CURRENCIES.map((c) => (
-                                    <SelectItem key={c.code} value={c.code}>{c.label}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                        <span className="text-xs text-muted-foreground">Prices in</span>
+                        <CompactCurrencyPicker currencyCode={currencyCode} setCurrencyCode={setCurrencyCode} />
                     </div>
                 </div>
 
-                <div className="grid lg:grid-cols-[1fr_260px] gap-6 mb-10">
+                {/* Mobile — steps 1 & 2 (step 3 = monthly pricing below) */}
+                <div className="md:hidden mb-10 space-y-6">
+                    {mobileStep === "business-type" && (
+                        <Card className="bg-card border-border">
+                            <CardContent className="p-6 space-y-5">
+                                <p className="text-xs font-medium text-primary uppercase tracking-wider">Step 1 · Business type</p>
+                                <div>
+                                    <h2 className="text-lg font-semibold text-foreground mb-1">What type of business do you run?</h2>
+                                    <p className="text-sm text-muted-foreground">Pick the profile that fits you best.</p>
+                                </div>
+                                <fieldset className="space-y-2">
+                                    <legend className="sr-only">Business type</legend>
+                                    {PRESETS.map((preset) => (
+                                        <label
+                                            key={preset.key}
+                                            className={cn(
+                                                "flex items-start gap-3 rounded-xl border p-4 cursor-pointer transition-colors touch-manipulation",
+                                                selectedPresetKey === preset.key
+                                                    ? "border-primary bg-primary/5"
+                                                    : "border-border/60 bg-card/50 hover:bg-muted/20",
+                                            )}
+                                        >
+                                            <input
+                                                type="radio"
+                                                name="business-type"
+                                                className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
+                                                checked={selectedPresetKey === preset.key}
+                                                onChange={() => {
+                                                    setSelectedPresetKey(preset.key);
+                                                    setInputs(preset.values);
+                                                    setFieldMask(maskFromPreset(preset.values));
+                                                }}
+                                            />
+                                            <span className="font-medium text-foreground text-sm leading-snug">{preset.label}</span>
+                                        </label>
+                                    ))}
+                                </fieldset>
+                                <div className="rounded-lg border border-border/50 bg-muted/25 px-3 py-2.5 text-sm text-muted-foreground leading-snug">
+                                    {selectedPreset.blurb}
+                                </div>
+                            </CardContent>
+                        </Card>
+                    )}
+
+                    {(mobileStep === "details" || mobileStep === "monthly-pricing") && (
+                        <Card className="bg-card border-border/60">
+                            <CardContent className="p-4 flex items-center justify-between gap-3">
+                                <div className="min-w-0">
+                                    <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Step 1 · Profile</p>
+                                    <p className="text-sm font-semibold text-foreground truncate">{selectedPreset.label}</p>
+                                </div>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className="shrink-0"
+                                    onClick={() => setMobileStep("business-type")}
+                                >
+                                    Change
+                                </Button>
+                            </CardContent>
+                        </Card>
+                    )}
+
+                    {(mobileStep === "details" || mobileStep === "monthly-pricing") && fieldMask && (
+                        <Card className="bg-card border-border">
+                            <CardContent className="p-6 space-y-1">
+                                <p className="text-xs font-medium text-primary uppercase tracking-wider mb-3">Step 2 · Business details</p>
+                                <div className="mb-5">
+                                    <h2 className="text-lg font-semibold text-foreground mb-1">Your Business Details</h2>
+                                    <p className="text-xs text-muted-foreground leading-relaxed">
+                                        Only fields that match your profile are shown. Tap a value to change it.
+                                    </p>
+                                </div>
+
+                                {(() => {
+                                    const m = fieldMask;
+                                    const showSessions =
+                                        m.sessions1on1Online || m.sessions1on1InPerson ||
+                                        m.groupSessionsOnline || m.groupSessionsInPerson ||
+                                        m.studentsPerGroupOnline || m.studentsPerGroupInPerson;
+                                    const showStaff =
+                                        m.tutoringStaffOnline || m.tutoringStaffInPerson ||
+                                        m.nonTutoringStaffOnline || m.nonTutoringStaffInPerson;
+                                    const showStudents = m.activeStudentsOnline || m.activeStudentsInPerson;
+
+                                    return (
+                                        <>
+                                            {showSessions && (
+                                                <>
+                                                    <MobileSectionHeader title="Sessions" tag="Per Session pricing" suppressTopRule />
+                                                    {(m.sessions1on1Online || m.groupSessionsOnline || m.studentsPerGroupOnline) && (
+                                                        <MobileChannelHeading icon={<Monitor className="w-4 h-4" />} title="Online" />
+                                                    )}
+                                                    {m.sessions1on1Online && (
+                                                        <MobileFieldRow
+                                                            label="1:1 sessions"
+                                                            value={inputs.sessions1on1Online}
+                                                            onChange={set("sessions1on1Online")}
+                                                            presetKind="sessions"
+                                                        />
+                                                    )}
+                                                    {m.groupSessionsOnline && (
+                                                        <MobileFieldRow
+                                                            label="Group sessions"
+                                                            value={inputs.groupSessionsOnline}
+                                                            onChange={set("groupSessionsOnline")}
+                                                            presetKind="sessions"
+                                                        />
+                                                    )}
+                                                    {m.studentsPerGroupOnline && (
+                                                        <MobileFieldRow
+                                                            label="Students per group"
+                                                            value={inputs.studentsPerGroupOnline}
+                                                            onChange={set("studentsPerGroupOnline")}
+                                                            indented
+                                                            tooltip="The number of students in each group session. Multiplied by group sessions to get total participant-sessions."
+                                                            presetKind="sessions"
+                                                        />
+                                                    )}
+                                                    {(m.sessions1on1InPerson || m.groupSessionsInPerson || m.studentsPerGroupInPerson) && (
+                                                        <MobileChannelHeading icon={<Building2 className="w-4 h-4" />} title="In-person" />
+                                                    )}
+                                                    {m.sessions1on1InPerson && (
+                                                        <MobileFieldRow
+                                                            label="1:1 sessions"
+                                                            value={inputs.sessions1on1InPerson}
+                                                            onChange={set("sessions1on1InPerson")}
+                                                            presetKind="sessions"
+                                                        />
+                                                    )}
+                                                    {m.groupSessionsInPerson && (
+                                                        <MobileFieldRow
+                                                            label="Group sessions"
+                                                            value={inputs.groupSessionsInPerson}
+                                                            onChange={set("groupSessionsInPerson")}
+                                                            presetKind="sessions"
+                                                        />
+                                                    )}
+                                                    {m.studentsPerGroupInPerson && (
+                                                        <MobileFieldRow
+                                                            label="Students per group"
+                                                            value={inputs.studentsPerGroupInPerson}
+                                                            onChange={set("studentsPerGroupInPerson")}
+                                                            indented
+                                                            tooltip="The number of students in each group session. Multiplied by group sessions to get total participant-sessions."
+                                                            presetKind="sessions"
+                                                        />
+                                                    )}
+                                                </>
+                                            )}
+
+                                            {showStaff && (
+                                                <>
+                                                    <MobileSectionHeader
+                                                        title="Staff"
+                                                        tag="Per Seat pricing"
+                                                        suppressTopRule={!showSessions}
+                                                    />
+                                                    {(m.tutoringStaffOnline || m.nonTutoringStaffOnline) && (
+                                                        <MobileChannelHeading icon={<Monitor className="w-4 h-4" />} title="Online" />
+                                                    )}
+                                                    {m.tutoringStaffOnline && (
+                                                        <MobileFieldRow
+                                                            label="Tutoring staff"
+                                                            value={inputs.tutoringStaffOnline}
+                                                            onChange={set("tutoringStaffOnline")}
+                                                            presetKind="seats"
+                                                        />
+                                                    )}
+                                                    {m.nonTutoringStaffOnline && (
+                                                        <MobileFieldRow
+                                                            label="Non-tutoring staff"
+                                                            value={inputs.nonTutoringStaffOnline}
+                                                            onChange={set("nonTutoringStaffOnline")}
+                                                            tooltip="e.g. admin staff, coordinators, front-desk. Counted as staff seats alongside tutoring staff."
+                                                            presetKind="seats"
+                                                        />
+                                                    )}
+                                                    {(m.tutoringStaffInPerson || m.nonTutoringStaffInPerson) && (
+                                                        <MobileChannelHeading icon={<Building2 className="w-4 h-4" />} title="In-person" />
+                                                    )}
+                                                    {m.tutoringStaffInPerson && (
+                                                        <MobileFieldRow
+                                                            label="Tutoring staff"
+                                                            value={inputs.tutoringStaffInPerson}
+                                                            onChange={set("tutoringStaffInPerson")}
+                                                            presetKind="seats"
+                                                        />
+                                                    )}
+                                                    {m.nonTutoringStaffInPerson && (
+                                                        <MobileFieldRow
+                                                            label="Non-tutoring staff"
+                                                            value={inputs.nonTutoringStaffInPerson}
+                                                            onChange={set("nonTutoringStaffInPerson")}
+                                                            tooltip="e.g. admin staff, coordinators, front-desk. Counted as staff seats alongside tutoring staff."
+                                                            presetKind="seats"
+                                                        />
+                                                    )}
+                                                </>
+                                            )}
+
+                                            {showStudents && (
+                                                <>
+                                                    <MobileSectionHeader
+                                                        title="Students"
+                                                        tag="Per Student pricing"
+                                                        suppressTopRule={!showSessions && !showStaff}
+                                                    />
+                                                    {m.activeStudentsOnline && (
+                                                        <>
+                                                            <MobileChannelHeading icon={<Monitor className="w-4 h-4" />} title="Online" />
+                                                            <MobileFieldRow
+                                                                label="Active students"
+                                                                value={inputs.activeStudentsOnline}
+                                                                onChange={set("activeStudentsOnline")}
+                                                                tooltip="Students currently enrolled and active this month — regardless of how many sessions they attend."
+                                                                presetKind="students"
+                                                            />
+                                                        </>
+                                                    )}
+                                                    {m.activeStudentsInPerson && (
+                                                        <>
+                                                            <MobileChannelHeading icon={<Building2 className="w-4 h-4" />} title="In-person" />
+                                                            <MobileFieldRow
+                                                                label="Active students"
+                                                                value={inputs.activeStudentsInPerson}
+                                                                onChange={set("activeStudentsInPerson")}
+                                                                tooltip="Students currently enrolled and active this month — regardless of how many sessions they attend."
+                                                                presetKind="students"
+                                                            />
+                                                        </>
+                                                    )}
+                                                </>
+                                            )}
+                                        </>
+                                    );
+                                })()}
+                            </CardContent>
+                        </Card>
+                    )}
+                </div>
+
+                <div className="hidden md:grid lg:grid-cols-[1fr_260px] gap-6 mb-10">
                     {/* Calculator Inputs */}
                     <Card className="bg-card border-border">
                         <CardContent className="p-6">
@@ -642,184 +1052,26 @@ const PricingCalculator = () => {
                                     tooltip="Students currently enrolled and active this month — regardless of how many sessions they attend."
                                 />
                             </div>
-
-                            <Accordion type="single" collapsible defaultValue="sessions" className="md:hidden w-full -mx-1">
-                                <AccordionItem value="sessions" className="border-border/60">
-                                    <AccordionTrigger className="py-3 hover:no-underline [&[data-state=open]]:border-b-0">
-                                        <div className="flex flex-col items-start gap-2 text-left">
-                                            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Sessions</span>
-                                            <Badge className="text-[10px] px-2 py-0 h-5 bg-primary/10 text-primary border-0 font-medium whitespace-normal text-left">
-                                                Per Session pricing
-                                            </Badge>
-                                        </div>
-                                    </AccordionTrigger>
-                                    <AccordionContent className="pt-0">
-                                        <MobileChannelHeading icon={<Monitor className="w-4 h-4" />} title="Online" />
-                                        <MobileFieldRow
-                                            label="1:1 sessions"
-                                            value={inputs.sessions1on1Online}
-                                            onChange={set("sessions1on1Online")}
-                                            presetKind="sessions"
-                                        />
-                                        <MobileFieldRow
-                                            label="Group sessions"
-                                            value={inputs.groupSessionsOnline}
-                                            onChange={set("groupSessionsOnline")}
-                                            presetKind="sessions"
-                                        />
-                                        <MobileFieldRow
-                                            label="Students per group"
-                                            value={inputs.studentsPerGroupOnline}
-                                            onChange={set("studentsPerGroupOnline")}
-                                            indented
-                                            tooltip="The number of students in each group session. Multiplied by group sessions to get total participant-sessions."
-                                            presetKind="sessions"
-                                        />
-                                        <MobileChannelHeading icon={<Building2 className="w-4 h-4" />} title="In-person" />
-                                        <MobileFieldRow
-                                            label="1:1 sessions"
-                                            value={inputs.sessions1on1InPerson}
-                                            onChange={set("sessions1on1InPerson")}
-                                            presetKind="sessions"
-                                        />
-                                        <MobileFieldRow
-                                            label="Group sessions"
-                                            value={inputs.groupSessionsInPerson}
-                                            onChange={set("groupSessionsInPerson")}
-                                            presetKind="sessions"
-                                        />
-                                        <MobileFieldRow
-                                            label="Students per group"
-                                            value={inputs.studentsPerGroupInPerson}
-                                            onChange={set("studentsPerGroupInPerson")}
-                                            indented
-                                            tooltip="The number of students in each group session. Multiplied by group sessions to get total participant-sessions."
-                                            presetKind="sessions"
-                                        />
-                                    </AccordionContent>
-                                </AccordionItem>
-                                <AccordionItem value="staff" className="border-border/60">
-                                    <AccordionTrigger className="py-3 hover:no-underline">
-                                        <div className="flex flex-col items-start gap-2 text-left">
-                                            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Staff</span>
-                                            <Badge className="text-[10px] px-2 py-0 h-5 bg-primary/10 text-primary border-0 font-medium whitespace-normal text-left">
-                                                Per Seat pricing
-                                            </Badge>
-                                        </div>
-                                    </AccordionTrigger>
-                                    <AccordionContent className="pt-0">
-                                        <MobileChannelHeading icon={<Monitor className="w-4 h-4" />} title="Online" />
-                                        <MobileFieldRow
-                                            label="Tutoring staff"
-                                            value={inputs.tutoringStaffOnline}
-                                            onChange={set("tutoringStaffOnline")}
-                                            presetKind="seats"
-                                        />
-                                        <MobileFieldRow
-                                            label="Non-tutoring staff"
-                                            value={inputs.nonTutoringStaffOnline}
-                                            onChange={set("nonTutoringStaffOnline")}
-                                            tooltip="e.g. admin staff, coordinators, front-desk. Counted as staff seats alongside tutoring staff."
-                                            presetKind="seats"
-                                        />
-                                        <MobileChannelHeading icon={<Building2 className="w-4 h-4" />} title="In-person" />
-                                        <MobileFieldRow
-                                            label="Tutoring staff"
-                                            value={inputs.tutoringStaffInPerson}
-                                            onChange={set("tutoringStaffInPerson")}
-                                            presetKind="seats"
-                                        />
-                                        <MobileFieldRow
-                                            label="Non-tutoring staff"
-                                            value={inputs.nonTutoringStaffInPerson}
-                                            onChange={set("nonTutoringStaffInPerson")}
-                                            tooltip="e.g. admin staff, coordinators, front-desk. Counted as staff seats alongside tutoring staff."
-                                            presetKind="seats"
-                                        />
-                                    </AccordionContent>
-                                </AccordionItem>
-                                <AccordionItem value="students" className="border-border/60 border-b-0">
-                                    <AccordionTrigger className="py-3 hover:no-underline">
-                                        <div className="flex flex-col items-start gap-2 text-left">
-                                            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Students</span>
-                                            <Badge className="text-[10px] px-2 py-0 h-5 bg-primary/10 text-primary border-0 font-medium whitespace-normal text-left">
-                                                Per Student pricing
-                                            </Badge>
-                                        </div>
-                                    </AccordionTrigger>
-                                    <AccordionContent className="pt-0">
-                                        <MobileChannelHeading icon={<Monitor className="w-4 h-4" />} title="Online" />
-                                        <MobileFieldRow
-                                            label="Active students"
-                                            value={inputs.activeStudentsOnline}
-                                            onChange={set("activeStudentsOnline")}
-                                            tooltip="Students currently enrolled and active this month — regardless of how many sessions they attend."
-                                            presetKind="students"
-                                        />
-                                        <MobileChannelHeading icon={<Building2 className="w-4 h-4" />} title="In-person" />
-                                        <MobileFieldRow
-                                            label="Active students"
-                                            value={inputs.activeStudentsInPerson}
-                                            onChange={set("activeStudentsInPerson")}
-                                            tooltip="Students currently enrolled and active this month — regardless of how many sessions they attend."
-                                            presetKind="students"
-                                        />
-                                    </AccordionContent>
-                                </AccordionItem>
-                            </Accordion>
                         </CardContent>
                     </Card>
 
                     {/* Unit Prices */}
                     <Card className="bg-card border-border h-fit">
                         <CardContent className="p-6">
-                            <h2 className="text-lg font-semibold text-foreground mb-4">Unit Prices</h2>
-
-                            {[
-                                {
-                                    section: "Per Session",
-                                    items: [
-                                        { label: "Online session", price: PRICES_USD.onlineSession },
-                                        { label: "In-person session", price: PRICES_USD.offlineSession },
-                                    ],
-                                },
-                                {
-                                    section: "Per Seat",
-                                    items: [
-                                        { label: "Online seat", price: PRICES_USD.onlineSeat },
-                                        { label: "In-person seat", price: PRICES_USD.offlineSeat },
-                                    ],
-                                },
-                                {
-                                    section: "Per Student",
-                                    items: [
-                                        { label: "Online student", price: PRICES_USD.studentOnline },
-                                        { label: "In-person student", price: PRICES_USD.studentOffline },
-                                    ],
-                                },
-                            ].map((group, gi, groups) => (
-                                <div key={group.section}>
-                                    <p className="text-[11px] text-muted-foreground/70 uppercase tracking-wider font-semibold mb-1 mt-4 first:mt-0">
-                                        {group.section}
-                                    </p>
-                                    {group.items.map((item, i, arr) => (
-                                        <div key={item.label}>
-                                            <div className="flex justify-between items-center py-2">
-                                                <span className="text-sm text-foreground">{item.label}</span>
-                                                <span className="text-sm font-semibold text-foreground">{fmt(item.price)}</span>
-                                            </div>
-                                            {i < arr.length - 1 && <Separator className="bg-border/50" />}
-                                        </div>
-                                    ))}
-                                    {gi < groups.length - 1 && <Separator className="bg-border/30 mt-2" />}
-                                </div>
-                            ))}
+                            <UnitPricesPanel fmt={fmt} />
                         </CardContent>
                     </Card>
                 </div>
 
-                {/* Results */}
-                <div className="mb-8 scroll-mt-24" id="estimated-monthly-costs">
+                {/* Results (mobile: step 3 — shown after "See monthly pricing") */}
+                <div
+                    ref={estimatesSectionRef}
+                    className={cn(
+                        "mb-8 scroll-mt-24",
+                        mobileStep !== "monthly-pricing" && "max-md:hidden",
+                    )}
+                    id="estimated-monthly-costs"
+                >
                     <h2 className="text-xl font-semibold text-foreground mb-2 text-center">Your Estimated Monthly Costs</h2>
                     {!hasAnyInput && (
                         <p className="text-sm text-muted-foreground text-center mb-6">
@@ -848,6 +1100,42 @@ const PricingCalculator = () => {
                         ))}
                     </div>
 
+                    {/* Desktop — summary + currency + Talk to us (replaces fixed bottom bar) */}
+                    <Card className="mt-6 hidden md:block border-border/60 bg-card shadow-sm">
+                        <CardContent className="p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-5">
+                            <div className="min-w-0 flex-1">
+                                <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1">Summary</p>
+                                {hasAnyInput && bestPlan ? (
+                                    <>
+                                        <p className="text-xs text-muted-foreground mb-0.5">Best estimate</p>
+                                        <p className="text-lg font-semibold text-foreground">
+                                            {bestPlan.title} · {formatPrice(bestPlan.price)}
+                                            <span className="text-muted-foreground font-normal text-base"> / mo</span>
+                                        </p>
+                                        <p className="text-xs text-muted-foreground mt-2 max-w-xl">
+                                            Want a tailored quote or volume pricing? Our team can walk you through options.
+                                        </p>
+                                    </>
+                                ) : (
+                                    <p className="text-sm text-muted-foreground">
+                                        Enter your business details above to see your best-fit plan and estimated monthly cost.
+                                    </p>
+                                )}
+                            </div>
+                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 shrink-0 sm:pl-4 sm:border-l sm:border-border/50">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-xs text-muted-foreground whitespace-nowrap">Prices in</span>
+                                    <CompactCurrencyPicker currencyCode={currencyCode} setCurrencyCode={setCurrencyCode} />
+                                </div>
+                                <Button className="w-full sm:w-auto px-6 shadow-md shadow-primary/15" asChild>
+                                    <a href={TALK_TO_US_CAL_URL} target="_blank" rel="noopener noreferrer">
+                                        Talk to us
+                                    </a>
+                                </Button>
+                            </div>
+                        </CardContent>
+                    </Card>
+
                     {/* Volume Discount Progress Hint */}
                     {showVolumeHint && (
                         <div className="mt-6 p-4 rounded-lg border border-border/60 bg-muted/30">
@@ -870,8 +1158,24 @@ const PricingCalculator = () => {
                     )}
                 </div>
 
-                {/* Disclaimer */}
-                <Alert className="bg-muted/50 border-border/60">
+                {/* Mobile — unit price reference below estimates (step 3) */}
+                <div className="md:hidden mb-10">
+                    {mobileStep === "monthly-pricing" && fieldMask && (
+                        <Card className="bg-card border-border">
+                            <CardContent className="p-6">
+                                <UnitPricesPanel fmt={fmt} />
+                            </CardContent>
+                        </Card>
+                    )}
+                </div>
+
+                {/* Disclaimer (mobile: only on monthly pricing step) */}
+                <Alert
+                    className={cn(
+                        "bg-muted/50 border-border/60",
+                        mobileStep !== "monthly-pricing" && "max-md:hidden",
+                    )}
+                >
                     <Info className="h-4 w-4 text-muted-foreground" />
                     <AlertDescription className="text-xs text-muted-foreground">
                         These prices are indicative and for estimation purposes only. Actual prices may vary based on your specific requirements, usage patterns, and negotiated terms. Please{" "}
@@ -896,7 +1200,7 @@ const PricingCalculator = () => {
                                 </p>
                             </div>
                             <Button asChild className="px-8 shrink-0">
-                                <a href="https://cal.com/bilal.abidi/wise-discounts" target="_blank" rel="noopener noreferrer">
+                                <a href={TALK_TO_US_CAL_URL} target="_blank" rel="noopener noreferrer">
                                     Talk to us
                                 </a>
                             </Button>
@@ -910,27 +1214,78 @@ const PricingCalculator = () => {
                 className="fixed bottom-0 left-0 right-0 z-50 md:hidden border-t border-border bg-card/95 backdrop-blur-md supports-[backdrop-filter]:bg-card/85 shadow-[0_-8px_30px_-12px_rgba(0,0,0,0.45)]"
                 style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
             >
-                <div className="max-w-5xl mx-auto px-4 pt-3 flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                        {hasAnyInput && bestPlan ? (
-                            <>
-                                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Best estimate</p>
-                                <p className="text-sm font-semibold text-foreground truncate">
-                                    {bestPlan.title} · {formatPrice(bestPlan.price)}
-                                    <span className="text-muted-foreground font-normal"> / mo</span>
-                                </p>
-                            </>
-                        ) : (
-                            <p className="text-sm text-muted-foreground">Add details above for estimates</p>
-                        )}
-                    </div>
-                    {hasAnyInput && (
-                        <a
-                            href="#estimated-monthly-costs"
-                            className="text-sm font-medium text-primary shrink-0 py-2 touch-manipulation"
+                <div className="max-w-5xl mx-auto px-4 pt-3 pb-3">
+                    {mobileStep === "business-type" && (
+                        <Button
+                            type="button"
+                            className="w-full touch-manipulation"
+                            onClick={() => {
+                                setFieldMask(maskFromPreset(selectedPreset.values));
+                                setMobileStep("details");
+                            }}
                         >
-                            View breakdown
-                        </a>
+                            Continue to business details
+                        </Button>
+                    )}
+                    {mobileStep === "details" && (
+                        <Button
+                            type="button"
+                            className="w-full touch-manipulation"
+                            onClick={() => {
+                                setMobileStep("monthly-pricing");
+                                requestAnimationFrame(() => {
+                                    scrollToMonthlyEstimates();
+                                });
+                            }}
+                        >
+                            See monthly pricing
+                        </Button>
+                    )}
+                    {mobileStep === "monthly-pricing" && !estimatesInView && (
+                        <Button
+                            type="button"
+                            className="w-full touch-manipulation"
+                            onClick={() => {
+                                scrollToMonthlyEstimates();
+                            }}
+                        >
+                            See monthly pricing
+                        </Button>
+                    )}
+                    {mobileStep === "monthly-pricing" && estimatesInView && (
+                        <div className="flex flex-col gap-2.5 w-full">
+                            <div className="flex flex-wrap items-end justify-between gap-x-2 gap-y-2">
+                                <div className="min-w-0 flex-1 basis-[min(100%,12rem)]">
+                                    {hasAnyInput && bestPlan ? (
+                                        <>
+                                            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Best estimate</p>
+                                            <p className="text-sm font-semibold text-foreground truncate">
+                                                {bestPlan.title} · {formatPrice(bestPlan.price)}
+                                                <span className="text-muted-foreground font-normal"> / mo</span>
+                                            </p>
+                                        </>
+                                    ) : (
+                                        <p className="text-sm text-muted-foreground">Add numbers in business details for estimates</p>
+                                    )}
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0 ml-auto">
+                                    <span className="text-[10px] text-muted-foreground whitespace-nowrap">Prices in</span>
+                                    <CompactCurrencyPicker
+                                        currencyCode={currencyCode}
+                                        setCurrencyCode={setCurrencyCode}
+                                        size="footer"
+                                    />
+                                </div>
+                            </div>
+                            <Button
+                                className="w-full h-11 text-sm font-semibold shadow-md shadow-primary/25 touch-manipulation"
+                                asChild
+                            >
+                                <a href={TALK_TO_US_CAL_URL} target="_blank" rel="noopener noreferrer">
+                                    Talk to us
+                                </a>
+                            </Button>
+                        </div>
                     )}
                 </div>
             </div>
