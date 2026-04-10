@@ -6,11 +6,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Wise Pricing Calculator | Flexible Plans</title>
     <script>
-      window.Userback = window.Userback || {};
-      Userback.access_token = "A-6nSFi48OOPnULrwMZ5avhVJs4";
-      (function(d) {
-        var s = d.createElement('script');s.async = true;s.src = 'https://static.userback.io/widget/v1.js';(d.head || d.body).appendChild(s);
-      })(document);
+      window.onUsersnapLoad = function(api) {
+        api.init();
+      };
+      var script = document.createElement('script');
+      script.defer = 1;
+      script.src = 'https://widget.usersnap.com/global/load/a9df6787-464e-4b88-b32e-7867bc48fe03?onload=onUsersnapLoad';
+      document.getElementsByTagName('head')[0].appendChild(script);
     </script>
   </head>
   <body>
